@@ -1,19 +1,19 @@
 # syntax=docker/dockerfile:1
-FROM node:22-slim AS web
+FROM node:26-slim AS web
 WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM node:22-slim AS server
+FROM node:26-slim AS server
 WORKDIR /srv
 COPY server/package*.json ./
 RUN npm ci
 COPY server/ ./
 RUN npm run build && npm prune --omit=dev
 
-FROM node:22-slim
+FROM node:26-slim
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/data MEDIA_DIR=/media WEB_DIR=/app/web
 # node:sqlite is still flagged experimental on Node 22; silence only that, so deprecations and other warnings stay visible
 ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
