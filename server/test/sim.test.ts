@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Engine } from "../src/engine/engine.js";
 import { leagueById } from "../src/leagues.js";
 import { parseSummary } from "../src/providers/espn.js";
+import type { Raw } from "../src/providers/raw.js";
 import { Store } from "../src/store.js";
 import type { EventPayload } from "../src/types.js";
 import { VirtualClock } from "../src/sim/clock.js";
@@ -197,7 +198,7 @@ describe("sim server", () => {
     const sim = await startSimServer({ games, speed: 1, port: 0, quiet: true });
     try {
       const base = `http://127.0.0.1:${sim.port}`;
-      const j = async (p: string, init?: RequestInit) => (await fetch(base + p, init)).json() as Promise<any>;
+      const j = async (p: string, init?: RequestInit) => (await fetch(base + p, init)).json() as Promise<Raw>;
       let sb = await j("/espn/hockey/nhl/scoreboard");
       expect(sb.events).toHaveLength(1);
       expect(sb.events[0].status.type.state).toBe("pre");
@@ -212,12 +213,12 @@ describe("sim server", () => {
       sb = await j("/espn/hockey/nhl/scoreboard");
       expect(sb.events[0].status.type.state).toBe("in");
       const sum = await j("/espn/hockey/nhl/summary?event=401892525");
-      expect(sum.plays.some((p: any) => p.scoringPlay)).toBe(true);
-      expect(sum.plays.filter((p: any) => p.scoringPlay)).toHaveLength(1);
+      expect(sum.plays.some((p: Raw) => p.scoringPlay)).toBe(true);
+      expect(sum.plays.filter((p: Raw) => p.scoringPlay)).toHaveLength(1);
       const now = await j("/nhl/score/now");
       expect(now.games[0].goals).toHaveLength(1);
       const pbp = await j(`/nhl/gamecenter/${games[0].nhlId}/play-by-play`);
-      expect(pbp.plays.filter((p: any) => p.typeDescKey === "goal")).toHaveLength(1);
+      expect(pbp.plays.filter((p: Raw) => p.typeDescKey === "goal")).toHaveLength(1);
       expect((await j("/espn/hockey/nhl/teams/5/schedule")).events.length).toBeGreaterThan(0);
       expect((await fetch(base + "/espn/hockey/nhl/summary?event=1")).status).toBe(404);
 

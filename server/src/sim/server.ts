@@ -11,8 +11,9 @@ import http from "node:http";
 import { URL } from "node:url";
 import { VirtualClock } from "./clock.js";
 import { LEAD_MS, ReplayGame, type Marker } from "./replay.js";
+import { errMsg } from "../security.js";
 
-export interface SimServerOptions {
+interface SimServerOptions {
   games: ReplayGame[];
   speed?: number;
   port?: number;
@@ -22,7 +23,7 @@ export interface SimServerOptions {
   quiet?: boolean;
 }
 
-export interface SimServer {
+interface SimServer {
   port: number;
   clock: VirtualClock;
   games: ReplayGame[];
@@ -42,13 +43,19 @@ const json = (res: http.ServerResponse, code: number, body: unknown) => {
   res.end(JSON.stringify(body));
 };
 
-async function readBody(req: http.IncomingMessage): Promise<any> {
+async function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > 64 * 1024) throw new Error("body too large");
+    chunks.push(c as Buffer);
+  }
   const s = Buffer.concat(chunks).toString("utf8");
   if (!s) return {};
   try {
-    return JSON.parse(s);
+    const v: unknown = JSON.parse(s);
+    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
   } catch {
     return Object.fromEntries(new URLSearchParams(s));
   }
@@ -176,7 +183,7 @@ export async function startSimServer(o: SimServerOptions): Promise<SimServer> {
       }
       json(res, 404, { error: `no route ${p}` });
     } catch (err) {
-      if (!res.headersSent) json(res, 500, { error: (err as Error).message });
+      if (!res.headersSent) json(res, 500, { error: errMsg(err) });
     }
   });
 

@@ -1,8 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
 
-export const DEFAULT_APP_KEY = "homeroom-local-key";
-export const DEFAULT_APP_SECRET = "homeroom-local-secret";
+const DEFAULT_APP_KEY = "homeroom-local-key";
+const DEFAULT_APP_SECRET = "homeroom-local-secret";
 
 /** docker-compose passes unset variables through as "", which must behave like "not set" */
 const blankToUndefined = (v: unknown) => (v === "" ? undefined : v);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Horn, Settings, TeamInfo } from "../types";
 import { api, hornUrl } from "../lib/api";
 import { Button, Card, Field, inputCls, Notice } from "../components/ui";
+import { errMsg } from "../lib/errors";
 
 const fmtDur = (d: number) => (d >= 60 ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, "0")}` : `${d.toFixed(1)} s`);
 
@@ -44,11 +45,11 @@ export default function HornManager({ leagues, settings }: { leagues: string[]; 
       await api.uploadHorn(league, abbr || "default", file);
       setFile(null); setAbbr(""); if (fileRef.current) fileRef.current.value = "";
       await load();
-    } catch (x) { setErr(`Upload failed: ${(x as Error).message}`); } finally { setBusy(false); }
+    } catch (x) { setErr(`Upload failed: ${errMsg(x)}`); } finally { setBusy(false); }
   };
   const del = async (h: Horn) => {
     if (!confirm(`Delete horn ${h.league.toUpperCase()} ${h.abbr}?`)) return;
-    try { await api.deleteHorn(h.league, h.abbr); await load(); } catch (x) { setErr(`Delete failed: ${(x as Error).message}`); }
+    try { await api.deleteHorn(h.league, h.abbr); await load(); } catch (x) { setErr(`Delete failed: ${errMsg(x)}`); }
   };
 
   return (

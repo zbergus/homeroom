@@ -8,7 +8,7 @@ import { MEDIA_PLAYER_RE } from "./outputs/horn_volume.js";
 
 export const ABBR_RE = /^[A-Za-z0-9]{1,8}$/;
 /** Home Assistant entity id: `domain.object_id` */
-export const ENTITY_RE = /^[a-z0-9_]+\.[A-Za-z0-9_]+$/;
+const ENTITY_RE = /^[a-z0-9_]+\.[A-Za-z0-9_]+$/;
 
 const leagueId = z.string().refine((id) => LEAGUES.some((l) => l.id === id), "unknown league id");
 const abbr = z.string().regex(ABBR_RE, "must be 1-8 letters or digits");
@@ -26,7 +26,7 @@ const isHttpUrl = (s: string): boolean => {
 const httpUrl = z.string().max(2048).refine(isHttpUrl, "must be an http:// or https:// URL");
 const optionalUrl = z.union([z.literal(""), httpUrl]);
 
-export const RgbSchema = z.object({ r: channel, g: channel, b: channel });
+const RgbSchema = z.object({ r: channel, g: channel, b: channel });
 
 const HaSettingsPatch = z.object({
   url: optionalUrl.optional(),
@@ -66,7 +66,6 @@ export const SettingsPatchSchema = z.object({
   horn_volume: z.number().min(0, HORN_VOL).max(1, HORN_VOL).nullable().optional(),
   horn_players: z.array(z.string().regex(MEDIA_PLAYER_RE)).max(20, "up to 20 media_player.* entity ids").optional(),
 });
-export type SettingsPatchInput = z.infer<typeof SettingsPatchSchema>;
 
 export const SyncBodySchema = z.object({
   games: z.array(z.string().max(100)).max(5000).optional(),

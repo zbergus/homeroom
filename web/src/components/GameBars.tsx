@@ -10,7 +10,7 @@ import { TeamBadge } from "./Kiosk";
  *   compact  : abbreviations, narrower bars, smaller status
  *   flashAbbr: abbreviation of a team whose bar should flash (goal)
  */
-export function statusLines(g: Game, clockText: string, now: number): [string, string?] {
+function statusLines(g: Game, clockText: string, now: number): [string, string?] {
   if (g.status === "post") return ["FINAL"];
   if (g.status === "pre") {
     const ms = startMs(g);

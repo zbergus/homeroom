@@ -1,6 +1,5 @@
 import type { StatRow } from "../types.js";
-
-type J = any;
+import type { Raw } from "./raw.js";
 type Cell = { display: string };
 type Stats = Map<string, Cell>;
 type Val = { d: string; n: number };
@@ -107,7 +106,7 @@ const ROWS: Record<string, Spec[]> = {
 };
 
 /** Flatten ESPN's `statistics` (flat list for most sports, category-nested for baseball) into name -> cell. */
-function flatten(stats: J[] | undefined): Stats {
+function flatten(stats: Raw[] | undefined): Stats {
   const m: Stats = new Map();
   for (const s of stats ?? []) {
     if (Array.isArray(s.stats)) for (const x of s.stats) m.set(`${s.name}.${x.name}`, { display: String(x.displayValue ?? "") });
@@ -120,7 +119,7 @@ function flatten(stats: J[] | undefined): Stats {
  * Canonical comparison rows from `summary.boxscore.teams`. A row is only emitted when BOTH teams have a value,
  * so a feed that omits a stat just drops that row instead of showing a blank.
  */
-export function buildStatRows(sport: string, teams: J[] | undefined): StatRow[] {
+export function buildStatRows(sport: string, teams: Raw[] | undefined): StatRow[] {
   const specs = ROWS[sport];
   if (!specs || !teams || teams.length < 2) return [];
   const home = teams.find((t) => t.homeAway === "home") ?? teams[1];

@@ -30,7 +30,7 @@ function Chip({ g, size }: { g: FormGame; size: number }) {
 }
 
 /** "Last 10 Games" W/L chips with opponent logos. Renders nothing without data. */
-export function LastTen({ team, form, size = 2.8 }: { team: Team; form?: TeamForm; size?: number }) {
+function LastTen({ team, form, size = 2.8 }: { team: Team; form?: TeamForm; size?: number }) {
   const games = form?.games?.slice(-10) ?? [];
   if (!games.length) return null;
   return (

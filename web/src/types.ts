@@ -3,7 +3,7 @@
 
 export type RGB = { r: number; g: number; b: number };
 
-export interface TeamOptions {
+interface TeamOptions {
   primary_color_rgb?: RGB;
   secondary_color_rgb?: RGB;
   alternate_color_rgb?: RGB;
@@ -21,7 +21,7 @@ export interface Team {
   options?: TeamOptions;
 }
 
-export type GameStatus = "pre" | "in" | "post";
+type GameStatus = "pre" | "in" | "post";
 
 export type StatValue = number | string;
 
@@ -119,9 +119,9 @@ export interface Game {
 export type GameLite = Pick<Game, "id" | "league" | "sport" | "status" | "start_time" | "home" | "away"> &
   Partial<Game>;
 
-export type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
+type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
 /** informational, UI/REST only */
-export type UiEventType = EventType | "goal_overturned";
+type UiEventType = EventType | "goal_overturned";
 
 export interface Scoring {
   label: string;

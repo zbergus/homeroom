@@ -4,11 +4,12 @@ import type { EventPayload } from "../types.js";
 import type { HaOutputs } from "./ha.js";
 import type { LightRules } from "./lights.js";
 import type { UiHub } from "./ui.js";
+import { errMsg } from "../security.js";
 
 /** Events the HA integration has no handler for: they reach the TV, REST path and light rules, never the Pusher channel. */
 export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "card", "powerplay"]);
 
-export interface EventRecord {
+interface EventRecord {
   at: number;
   event_id: string;
   type: EventPayload["type"];
@@ -26,7 +27,7 @@ export interface EventRecord {
 }
 
 /** Fixed-size log of what the dispatcher did with each event; feeds the diagnostics panel. */
-export class EventLog {
+class EventLog {
   private items: EventRecord[] = [];
   constructor(private max = 100) {}
   add(r: EventRecord): void {
@@ -93,7 +94,7 @@ export class Dispatcher {
       if (!INTERNAL_ONLY.has(ev.type)) rec.sent.pusher_clients = this.ha.publishPusher(ev);
       const { ha } = this.engine.settings;
       rec.sent.rest = ha.fire_rest_events && !!ha.url && !!ha.token;
-      void this.ha.publishRest(ev).catch((err) => console.error("[ha] rest failed:", (err as Error).message));
+      void this.ha.publishRest(ev).catch((err) => console.error("[ha] rest failed:", errMsg(err)));
       rec.sent.lights = this.lights.handle(ev);
       if (rec.sent.pusher_clients === 0 && !rec.sent.rest && !INTERNAL_ONLY.has(ev.type)) rec.reason = "no Home Assistant integration is connected and REST events are off";
     }

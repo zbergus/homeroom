@@ -3,6 +3,7 @@ import type { EventRecord, ProviderStatus, Status } from "../types";
 import { api } from "../lib/api";
 import { Button, Card, Notice } from "../components/ui";
 import { usePoll, type Poll } from "./usePoll";
+import { copyText } from "../lib/clipboard";
 
 const sevOf = (w: string): "err" | "warn" | "info" =>
   /fail|cannot|not set|localhost|not connected|No Home Assistant/i.test(w) ? "err" : /disabled/i.test(w) ? "info" : "warn";
@@ -12,7 +13,7 @@ const SEV = {
   info: "border-sky-500/40 bg-sky-500/10 text-sky-200",
 };
 
-export type Health = "ok" | "warn" | "err" | "unknown";
+type Health = "ok" | "warn" | "err" | "unknown";
 export function healthOf(p: Poll<Status>): Health {
   if (p.err && !p.data) return "err";
   if (!p.data) return "unknown";
@@ -105,7 +106,7 @@ export default function StatusPanel({ status, active }: { status: Poll<Status>; 
   // ages are relative to the server's clock at fetch time, plus the time since we fetched
   const ageOf = (t: number | null) => (t === null ? "" : fmtAgo((s?.server_time ?? status.at ?? now) - t + sinceOk));
   const copy = async () => {
-    try { await navigator.clipboard.writeText(CHECKLIST); } catch { const t = document.createElement("textarea"); t.value = CHECKLIST; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    await copyText(CHECKLIST);
     setCopied(true); setTimeout(() => setCopied(false), 1800);
   };
   return (

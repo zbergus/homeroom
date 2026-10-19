@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Settings, SettingsPatch, Status } from "../types";
 import { Button, Card, Field, inputCls, Notice, Switch } from "../components/ui";
+import { errMsg } from "../lib/errors";
 
 const SCOPES: { id: NonNullable<Settings["horn_scope"]>; label: string }[] = [
   { id: "home", label: "Home team only" },
@@ -32,7 +33,7 @@ export default function HornLimits({ settings, saveNow, audio }: { settings: Set
     if (!(Number.isFinite(f) && f >= 0 && f <= 5000)) return setMsg({ k: "err", t: "Fade must be between 0 and 5000 ms." });
     setBusy(true);
     try { await saveNow({ horn_max_s: m, horn_fade_ms: Math.round(f), horn_normalize: norm, horn_scope: scope }); setMsg({ k: "ok", t: "Saved. The next horn uses these settings." }); }
-    catch (e) { setMsg({ k: "err", t: (e as Error).message }); } finally { setBusy(false); }
+    catch (e) { setMsg({ k: "err", t: errMsg(e) }); } finally { setBusy(false); }
   };
 
   return (

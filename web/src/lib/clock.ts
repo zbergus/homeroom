@@ -13,9 +13,9 @@ import type { Game } from "../types";
 
 type ClockFields = Pick<Game, "clock"> & Partial<Pick<Game, "clock_s" | "clock_running" | "clock_dir">>;
 
-export interface ClockReading { seconds: number | null; text: string }
+interface ClockReading { seconds: number | null; text: string }
 
-export function formatClock(totalSeconds: number, minutesOnly = false): string {
+function formatClock(totalSeconds: number, minutesOnly = false): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
   const p = (n: number) => String(n).padStart(2, "0");
@@ -23,7 +23,7 @@ export function formatClock(totalSeconds: number, minutesOnly = false): string {
   return h > 0 ? `${h}:${p(m)}:${p(ss)}` : `${m}:${p(ss)}`;
 }
 
-export function interpolateClock(game: ClockFields, receivedAtMs: number, nowMs: number): ClockReading {
+function interpolateClock(game: ClockFields, receivedAtMs: number, nowMs: number): ClockReading {
   const base = game.clock_s;
   if (!game.clock_running || typeof base !== "number" || !Number.isFinite(base)) {
     return { seconds: typeof base === "number" && Number.isFinite(base) ? base : null, text: game.clock ?? "" };

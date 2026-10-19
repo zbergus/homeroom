@@ -3,6 +3,7 @@ import type { Device, LightAction, Trigger } from "../types";
 import { api } from "../lib/api";
 import { Button, Card, Notice } from "../components/ui";
 import ActionEditor, { validateAction } from "./ActionEditor";
+import { errMsg } from "../lib/errors";
 
 const newAction = (): LightAction => ({ id: `act_${Math.random().toString(36).slice(2, 8)}`, enabled: true, triggers: ["any_score"], team_scope: "any", entities: [], effect: "flash", duration: 5, speed: 5, colors: "team", restore: true });
 
@@ -26,7 +27,7 @@ export default function DevicesActions({ triggers }: { triggers: Trigger[] }) {
     if (Object.keys(probs).length) { setMsg({ k: "err", t: "Some actions are incomplete. Nothing was saved." }); return; }
     setBusy(true);
     try { await api.putActions(list); setDirty(false); setMsg({ k: "ok", t: "Actions saved." }); }
-    catch (e) { setMsg({ k: "err", t: `Save failed: ${(e as Error).message}` }); } finally { setBusy(false); }
+    catch (e) { setMsg({ k: "err", t: `Save failed: ${errMsg(e)}` }); } finally { setBusy(false); }
   };
   return (
     <Card title="Triggers & light actions" subtitle="Choose what triggers each action, which lights it drives, and how they react."

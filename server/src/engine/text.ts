@@ -19,7 +19,7 @@ export function scoringLabel(sport: string, delta: number, playText = ""): strin
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-export interface TextCtx {
+interface TextCtx {
   game: Game;
   card?: { kind: "yellow" | "red"; player?: string; clock: string };
   team?: Team;

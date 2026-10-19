@@ -1,6 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { EventPayload, Game, ServerMsg, Settings, ViewName } from "../types";
-import { startMock } from "./mock";
 
 export type ConnState = "connecting" | "open" | "closed" | "mock";
 
@@ -34,10 +33,19 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let stopMock: (() => void) | undefined;
 let wsEver = false;
 
+let mockLoading = false;
 function beginMock() {
-  if (stopMock) return;
+  if (stopMock || mockLoading) return;
+  mockLoading = true;
   set({ conn: "mock" });
-  stopMock = startMock(sink);
+  // the mock feed is only for ?mock=1 and VITE_MOCK builds: its own chunk, never downloaded in normal use
+  void import("./mock").then(
+    ({ startMock }) => {
+      mockLoading = false;
+      if (refs > 0 && !stopMock) stopMock = startMock(sink);
+    },
+    () => { mockLoading = false; },
+  );
 }
 
 function connect() {

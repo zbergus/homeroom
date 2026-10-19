@@ -5,6 +5,7 @@ import { Button, Card, inputCls, Notice } from "../components/ui";
 import Calibrate from "./Calibrate";
 import DelayControl, { fmtDelay } from "./DelayControl";
 import LeagueDelays from "./LeagueDelays";
+import { errMsg } from "../lib/errors";
 
 interface Props { settings: Settings; update: (p: Partial<Settings>) => void; games: GameLite[]; sync: SyncState; leagues: string[]; live: Map<string, Game>; active: boolean }
 
@@ -21,7 +22,7 @@ export default function DelayPanel({ settings, update, games, sync, leagues, liv
   const test = async () => {
     setBusy(true); setMsg(null);
     try { await api.trigger({ trigger: "goal" }); setMsg({ k: "ok", t: "Test goal fired (immediately, stream delay not applied)." }); }
-    catch (e) { setMsg({ k: "err", t: `Test goal failed: ${(e as Error).message}` }); }
+    catch (e) { setMsg({ k: "err", t: `Test goal failed: ${errMsg(e)}` }); }
     finally { setBusy(false); }
   };
   const leagueRules = Object.entries(byL).map(([l, v]) => `${l.toUpperCase()} ${fmtDelay(v)} s`);

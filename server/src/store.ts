@@ -13,7 +13,7 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof
 export const DATA_DIR = process.env.DATA_DIR ?? path.resolve("data");
 export const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve("media");
 
-export const DEFAULT_SETTINGS: Settings = {
+const DEFAULT_SETTINGS: Settings = {
   delay_global_s: 0,
   delay_by_game: {},
   poll_idle_s: 1800,
@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
 /** one home has one, maybe two, Home Assistant installs */
 export const MAX_LINKS = 20;
 
-export interface LinkRow {
+interface LinkRow {
   api_key: string;
   unique_id: string;
   websocket_key: string;

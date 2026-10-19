@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, Card } from "../components/ui";
 import { isMockUrl } from "../lib/live";
+import { copyText } from "../lib/clipboard";
 
 const VIEWS = [
   { path: "/scoreboard?game=auto", name: "Scoreboard", desc: "Full-screen scoreboard for your synced game" },
@@ -13,8 +14,7 @@ export default function KioskLinks({ base }: { base: string }) {
   const [copied, setCopied] = useState("");
   const origin = (base || location.origin).replace(/\/$/, "");
   const copy = async (url: string) => {
-    try { await navigator.clipboard.writeText(url); }
-    catch { const t = document.createElement("textarea"); t.value = url; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    await copyText(url);
     setCopied(url); setTimeout(() => setCopied(""), 1800);
   };
   return (

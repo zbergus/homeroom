@@ -3,7 +3,7 @@ import type { GameLite, Settings, SyncState, TeamRef } from "../types";
 export const isFav = (favs: TeamRef[], league: string, abbr: string) => favs.some((f) => f.league === league && f.abbr === abbr);
 export const hasFav = (g: GameLite, favs: TeamRef[]) => isFav(favs, g.league, g.home.abbr) || isFav(favs, g.league, g.away.abbr);
 
-export interface SyncView { synced: boolean; auto: boolean; autoEligible: boolean }
+interface SyncView { synced: boolean; auto: boolean; autoEligible: boolean }
 
 /** Mirrors the server: a game is synced when picked explicitly, or when it holds a favourite and was not opted out. */
 export function syncView(g: GameLite, s: Settings, sync: SyncState): SyncView {

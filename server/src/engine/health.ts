@@ -3,7 +3,7 @@
  * can change shape or start failing without any user-visible symptom except "nothing happens", so this is what
  * /api/status and the dashboard use to say so.
  */
-export interface ProviderRow {
+interface ProviderRow {
   id: string;
   last_success_at: number | null;
   last_attempt_at: number | null;
@@ -17,8 +17,8 @@ export interface ProviderRow {
   state: "ok" | "failing" | "stale" | "idle";
 }
 
-export const FAILING_WARN_MS = 60_000;
-export const STALE_WARN_MS = 5 * 60_000;
+const FAILING_WARN_MS = 60_000;
+const STALE_WARN_MS = 5 * 60_000;
 
 interface Rec {
   lastSuccess: number | null;

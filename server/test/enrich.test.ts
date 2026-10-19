@@ -70,38 +70,38 @@ describe("poller selects the right games for enrichment", () => {
   const later = new Date(Date.now() + 8 * 3600_000).toISOString();
 
   it("insight: synced games starting within 3 h or live, only when missing/stale", async () => {
-    const buildInsight = vi.fn(async () => ({ updated_at: Date.now(), form: { home: { games: [] }, away: { games: [] }, rows: [] } }) as Insight);
+    const buildInsight = vi.fn(async (_g: Game) => ({ updated_at: Date.now(), form: { home: { games: [] }, away: { games: [] }, rows: [] } }) as Insight);
     const { engine } = setup({ buildInsight }, ["nhl:soon", "nhl:later", "nhl:live"]);
     engine.ingestEspn(game({ id: "nhl:soon", status: "pre", start_time: soon }));
     engine.ingestEspn(game({ id: "nhl:later", status: "pre", start_time: later }));
     engine.ingestEspn(game({ id: "nhl:live" }));
     engine.ingestEspn(game({ id: "nhl:unsynced", status: "pre", start_time: soon }));
     const poller = new Poller(engine);
-    await (poller as unknown as { tickInsight(): Promise<void> }).tickInsight();
-    expect(buildInsight.mock.calls.map((c) => (c[0] as Game).id).sort()).toEqual(["nhl:live", "nhl:soon"]);
+    await poller.tickInsight();
+    expect(buildInsight.mock.calls.map((c) => c[0].id).sort()).toEqual(["nhl:live", "nhl:soon"]);
     buildInsight.mockClear();
-    await (poller as unknown as { tickInsight(): Promise<void> }).tickInsight();
+    await poller.tickInsight();
     expect(buildInsight).not.toHaveBeenCalled(); // fresh now
   });
 
   it("summary: backfills a synced finished game once (not every minute) and ignores unsynced ones", async () => {
-    const fetchSummary = vi.fn(async () => ({ plays: [], rows: [] }));
+    const fetchSummary = vi.fn(async (_gameId: string) => ({ plays: [], rows: [] }));
     const { engine } = setup({ fetchSummary }, ["nhl:done"]);
     engine.ingestEspn(game({ id: "nhl:done", status: "post" }));
     engine.ingestEspn(game({ id: "nhl:done2", status: "post" })); // not synced
-    const poller = new Poller(engine) as unknown as { tickSummary(): Promise<void> };
+    const poller = new Poller(engine);
     await poller.tickSummary();
     await poller.tickSummary();
     expect(fetchSummary.mock.calls.map((c) => c[0])).toEqual(["nhl:done"]);
   });
 
   it("summary: live synced games only", async () => {
-    const fetchSummary = vi.fn(async () => ({ plays: [], rows: [row("shots")] }));
+    const fetchSummary = vi.fn(async (_gameId: string) => ({ plays: [], rows: [row("shots")] }));
     const { engine } = setup({ fetchSummary }, ["nhl:live", "nhl:pre"]);
     engine.ingestEspn(game({ id: "nhl:live" }));
     engine.ingestEspn(game({ id: "nhl:pre", status: "pre", start_time: soon }));
     engine.ingestEspn(game({ id: "nhl:other" }));
-    await (new Poller(engine) as unknown as { tickSummary(): Promise<void> }).tickSummary();
+    await new Poller(engine).tickSummary();
     expect(fetchSummary.mock.calls.map((c) => c[0])).toEqual(["nhl:live"]);
   });
 });

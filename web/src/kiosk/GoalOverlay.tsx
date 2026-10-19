@@ -4,7 +4,7 @@ import { useEvents } from "../lib/live";
 import { teamColors } from "../lib/format";
 import { TeamBadge } from "../components/Kiosk";
 
-export const OVERLAY_MS = 6000;
+const OVERLAY_MS = 6000;
 
 /** Queue of goal events matching `match`; yields the one currently on screen. */
 export function useGoalQueue(match: (e: EventPayload) => boolean, ms = OVERLAY_MS) {

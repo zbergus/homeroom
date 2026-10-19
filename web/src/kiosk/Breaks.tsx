@@ -16,7 +16,7 @@ export const hasForm = (g: Game) => !!(g.insight?.form && (g.insight.form.rows?.
 const panelBg = (c: SideColors) => `linear-gradient(165deg, ${c.fill} 0%, ${c.deep} 100%)`;
 
 /** Portrait gets a 1.7x unit so the same layouts (designed on a ~59u x 104u canvas) fill the tall screen. */
-export const PORTRAIT_SCALE = 1.7;
+const PORTRAIT_SCALE = 1.7;
 function Shell({ children }: { children: React.ReactNode }) {
   const o = useOrientation();
   return (
@@ -216,7 +216,7 @@ export function FormScreen({ game }: { game: Game }) {
 
 /* ------------------------------------------------------------------ Game stats */
 
-export function LineScore({ game, size = 1.8 }: { game: Game; size?: number }) {
+function LineScore({ game, size = 1.8 }: { game: Game; size?: number }) {
   const n = Math.max(game.linescores.home.length, game.linescores.away.length);
   if (!n) return null;
   const cols = Array.from({ length: n }, (_, i) => i);

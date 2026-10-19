@@ -4,7 +4,7 @@ import { useEvents } from "../lib/live";
 import { resolveTeam } from "../lib/colors";
 import { TeamBadge } from "../components/Kiosk";
 
-export const TOAST_MS = 5000;
+const TOAST_MS = 5000;
 
 /** Latest goal_overturned event matching `match`, held for ~5 s. */
 export function useOverturned(match: (e: EventPayload) => boolean, ms = TOAST_MS) {

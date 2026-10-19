@@ -2,13 +2,14 @@ import { useState } from "react";
 import type { Settings, SettingsPatch } from "../types";
 import { Card, Notice } from "../components/ui";
 import SwitchRow from "./SwitchRow";
+import { errMsg } from "../lib/errors";
 
 export default function Automation({ settings, saveNow }: { settings: Settings; saveNow: (p: SettingsPatch) => Promise<void> }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const set = async (p: SettingsPatch) => {
     setBusy(true); setErr("");
-    try { await saveNow(p); } catch (e) { setErr(`Could not save: ${(e as Error).message}. The switch was put back.`); } finally { setBusy(false); }
+    try { await saveNow(p); } catch (e) { setErr(`Could not save: ${errMsg(e)}. The switch was put back.`); } finally { setBusy(false); }
   };
   return (
     <Card title="Automation" subtitle="Which goals are allowed to drive lights, horns and Home Assistant.">

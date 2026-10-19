@@ -15,13 +15,13 @@
 //   contrast(a, b), deltaE(a, b), luminance(c)
 import type { RGB, Team } from "../types";
 
-export const BG: RGB = { r: 11, g: 14, b: 22 };
+const BG: RGB = { r: 11, g: 14, b: 22 };
 const WHITE: RGB = { r: 255, g: 255, b: 255 };
 const DARK: RGB = { r: 10, g: 13, b: 20 };
 export const MIN_DE = 30;
 
 const lin = (v: number) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
-export const luminance = (c: RGB) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+const luminance = (c: RGB) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
 export function contrast(a: RGB, b: RGB) {
   const la = luminance(a), lb = luminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
@@ -41,7 +41,7 @@ export function deltaE(a: RGB, b: RGB) {
   return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
 }
 
-export const mix = (a: RGB, b: RGB, t: number): RGB => ({
+const mix = (a: RGB, b: RGB, t: number): RGB => ({
   r: Math.round(a.r + (b.r - a.r) * t), g: Math.round(a.g + (b.g - a.g) * t), b: Math.round(a.b + (b.b - a.b) * t),
 });
 const css = (c: RGB) => `rgb(${c.r} ${c.g} ${c.b})`;
@@ -55,7 +55,7 @@ function hsl(h: number, s: number, l: number): RGB {
 
 interface Cand { rgb: RGB; pen: number; extreme: boolean }
 
-export interface ResolveOpts {
+interface ResolveOpts {
   /** the caller always draws WHITE text: light candidates are penalised and darkened to 4.5:1 */
   whiteText?: boolean;
 }

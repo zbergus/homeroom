@@ -12,10 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { mp3DurationS, truncateMp3 } from "./mp3.js";
 import type { Settings } from "../types.js";
+import { errMsg } from "../security.js";
 
 export type HornProcSettings = Pick<Settings, "horn_max_s" | "horn_fade_ms" | "horn_normalize">;
-export type AudioMode = "ffmpeg" | "truncate-only";
-export interface Plan { trim: boolean; normalize: boolean; fade: boolean }
+type AudioMode = "ffmpeg" | "truncate-only";
+interface Plan { trim: boolean; normalize: boolean; fade: boolean }
 
 /** What (if anything) has to be done to a clip of `durationS` seconds. null = serve the original bytes. */
 export function planHorn(durationS: number | undefined, s: HornProcSettings, mode: AudioMode): Plan | null {
@@ -26,7 +27,7 @@ export function planHorn(durationS: number | undefined, s: HornProcSettings, mod
   return { trim, normalize, fade: mode === "ffmpeg" && trim && s.horn_fade_ms > 0 };
 }
 
-export interface CacheKeyInput { src: string; mtimeMs: number; size: number; mode: AudioMode; s: HornProcSettings }
+interface CacheKeyInput { src: string; mtimeMs: number; size: number; mode: AudioMode; s: HornProcSettings }
 export function cacheKey(i: CacheKeyInput): string {
   return createHash("sha1").update(JSON.stringify([i.src, i.mtimeMs, i.size, i.mode, i.s.horn_max_s, i.s.horn_fade_ms, i.s.horn_normalize])).digest("hex").slice(0, 16);
 }
@@ -55,7 +56,7 @@ function cachedOk(file: string): boolean {
   try { return fs.statSync(file).size > 0; } catch { return false; }
 }
 
-export interface HornServiceOptions {
+interface HornServiceOptions {
   mediaDir: string;
   cacheDir: string;
   settings: () => HornProcSettings;
@@ -66,7 +67,7 @@ export interface HornServiceOptions {
   timeoutMs?: number;
 }
 
-export interface Resolved {
+interface Resolved {
   /** file to send */
   file: string;
   processed: boolean;
@@ -139,7 +140,7 @@ export class HornService {
       const built = await p;
       return built ? { file: built, processed: true, etag: `"${key}"` } : original;
     } catch (e) {
-      this.log(`unexpected error serving ${league}/${abbr}, using the original: ${(e as Error).message}`);
+      this.log(`unexpected error serving ${league}/${abbr}, using the original: ${errMsg(e)}`);
       return original;
     }
   }
@@ -161,7 +162,7 @@ export class HornService {
       return out;
     } catch (e) {
       this.failed.add(key);
-      this.log(`processing ${path.basename(src)} failed, serving the original: ${(e as Error).message}`);
+      this.log(`processing ${path.basename(src)} failed, serving the original: ${errMsg(e)}`);
       try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
       return undefined;
     }

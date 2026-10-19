@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-export interface TabDef<K extends string> { key: K; label: string }
+interface TabDef<K extends string> { key: K; label: string }
 
 const STORE = "homeroom.dash_tab";
 export const loadTab = <K extends string>(keys: K[], fallback: K): K => {

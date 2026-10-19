@@ -2,10 +2,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { createApp, type App } from "../src/app.js";
 import { Store } from "../src/store.js";
+import type { Game, Team } from "../src/types.js";
 
 const KEY = "testkey";
 let app: App;
 let base: string;
+
+interface WsData {
+  action?: string;
+  effect?: string;
+  state?: unknown;
+  socket_id?: string;
+  request_id?: string;
+  code?: number;
+  scoring?: { label: string };
+  team?: { options: { primary_color_rgb: unknown } };
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  return (await (await fetch(base + path)).json()) as T;
+}
+
+const rgb = { r: 1, g: 2, b: 3 };
+const team = (abbr: string): Team => ({ id: abbr, abbr, name: abbr, display_name: abbr, logo: "", score: 0, options: { primary_color_rgb: rgb, secondary_color_rgb: rgb, alternate_color_rgb: rgb } });
+const gameOf = (over: Partial<Game> = {}): Game => ({
+  id: "nhl:7", league: "nhl", sport: "hockey", status: "pre", start_time: new Date().toISOString(), period: 0, period_label: "", clock: "", intermission: false,
+  home: team("MIN"), away: team("CBJ"), linescores: { home: [], away: [] }, stats: { home: {}, away: {} }, goals: [], ...over,
+});
 
 async function boot(): Promise<void> {
   app = await createApp({ store: new Store(":memory:"), appKey: KEY, appSecret: "testsecret", webDir: "/nonexistent", port: 0 });
@@ -28,7 +51,7 @@ async function connectIntegration(devices: unknown[] = []) {
   await json("/integrations/home-assistant/devices/sync", "POST", { devices }, auth);
 
   const ws = new WebSocket(`ws://127.0.0.1:${app.port}/app/${KEY}?protocol=7`);
-  const msgs: { event: string; channel?: string; data: any }[] = [];
+  const msgs: { event: string; channel?: string; data: WsData }[] = [];
   let socketId = "";
   ws.on("message", (raw) => {
     const m = JSON.parse(raw.toString());
@@ -89,8 +112,8 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
     await vi.waitFor(() => expect(msgs.some((m) => m.event === "execute.light.test" && m.data.action === "restore")).toBe(true), { timeout: 4000 });
 
     const goal = msgs.find((m) => m.event === "goal")!;
-    expect(goal.data.scoring.label).toBe("TOUCHDOWN");
-    expect(goal.data.team.options.primary_color_rgb).toHaveProperty("r");
+    expect(goal.data.scoring?.label).toBe("TOUCHDOWN");
+    expect(goal.data.team?.options.primary_color_rgb).toHaveProperty("r");
     expect(goal.data).not.toHaveProperty("already_triggered_from_score_change");
     const order = msgs.map((m) => m.event).filter((e) => /^(get_state|execute)/.test(e));
     expect(order).toEqual(["get_state.light.test", "execute.light.test", "execute.light.test"]);
@@ -109,7 +132,7 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
     const white = { entity_id: "light.white", capabilities: { supported_color_modes: ["color_temp"] }, device_class: "light", name: "White" };
     const color = { entity_id: "light.color", capabilities: { supported_color_modes: ["hs", "color_temp"] }, device_class: "light", name: "Color" };
     const { ws, msgs } = await connectIntegration([white, color]);
-    const devs = (await (await fetch(`${base}/api/devices`)).json()) as any[];
+    const devs = await getJson<{ entity_id: string; supports_color: boolean }[]>("/api/devices");
     expect(Object.fromEntries(devs.map((d) => [d.entity_id, d.supports_color]))).toEqual({ "light.white": false, "light.color": true });
     await json("/api/actions", "PUT", [{ id: "a", enabled: true, triggers: ["any_score"], team_scope: "any", entities: ["light.white", "light.color"], effect: "alternate", duration: 1, speed: 5, colors: "team", restore: false }]);
     await json("/api/trigger", "POST", { trigger: "goal" });
@@ -142,10 +165,10 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
   it("the event log explains what happened, and /api/status shows the link", async () => {
     const { ws } = await connectIntegration();
     await json("/api/trigger", "POST", { trigger: "goal" });
-    const log = (await (await fetch(`${base}/api/events/recent`)).json()) as any[];
+    const log = await getJson<{ sent: { pusher_clients: number } }[]>("/api/events/recent");
     expect(log[0]).toMatchObject({ type: "goal", manual: true, outcome: "delivered" });
     expect(log[0].sent.pusher_clients).toBe(1);
-    const st = (await (await fetch(`${base}/api/status`)).json()) as any;
+    const st = await getJson<{ integration: { links: unknown[] }; warnings: string[] }>("/api/status");
     expect(st.integration.links[0]).toMatchObject({ events_connected: true, devices_connected: true });
     expect(st.warnings.join(" ")).toMatch(/PUBLIC_BASE_URL is not set/);
     ws.close();
@@ -155,13 +178,13 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
 describe("control plane", () => {
   it("never returns the Home Assistant token; blank keeps it, clear_token removes it", async () => {
     await json("/api/settings", "PUT", { ha: { url: "http://ha.local:8123", token: "s3cret", fire_rest_events: false } });
-    let s = (await (await fetch(`${base}/api/settings`)).json()) as any;
+    let s = await getJson<{ ha: { token_set: boolean } }>("/api/settings");
     expect(JSON.stringify(s)).not.toContain("s3cret");
     expect(s.ha).toMatchObject({ url: "http://ha.local:8123", token: "", token_set: true });
     await json("/api/settings", "PUT", { ha: { url: "http://ha.local:8123", token: "" } });
     expect(app.engine.settings.ha.token).toBe("s3cret");
     await json("/api/settings", "PUT", { ha: { clear_token: true } });
-    s = (await (await fetch(`${base}/api/settings`)).json()) as any;
+    s = await getJson<{ ha: { token_set: boolean } }>("/api/settings");
     expect(s.ha.token_set).toBe(false);
   });
 
@@ -182,7 +205,7 @@ describe("control plane", () => {
     expect((await json("/api/trigger", "POST", { trigger: "goal", league: "xx" })).status).toBe(400);
     expect((await json("/api/actions", "PUT", [{ id: "a", enabled: true, triggers: ["nope"], team_scope: "any", entities: [], effect: "flash" }])).status).toBe(400);
     const legacy = await json("/api/actions", "PUT", [{ id: "a", enabled: true, on: ["goal"], team_scope: "any", entities: [], effect: "flash", duration: 3, speed: 5, colors: "team", restore: true }]);
-    expect(((await legacy.json()) as any[])[0].triggers).toEqual(["any_score"]);
+    expect(((await legacy.json()) as { triggers: string[] }[])[0]?.triggers).toEqual(["any_score"]);
     const list = (await (await fetch(`${base}/api/triggers`)).json()) as { id: string }[];
     expect(list.map((t) => t.id)).toEqual(expect.arrayContaining(["touchdown", "basket_3", "win", "period_end"]));
   });
@@ -230,13 +253,11 @@ describe("control plane", () => {
   });
 
   it("POST /api/calibrate turns a TV clock reading into a suggested delay", async () => {
-    const rgb = { r: 1, g: 2, b: 3 };
-    const t = (abbr: string): any => ({ id: abbr, abbr, name: abbr, display_name: abbr, logo: "", score: 0, options: { primary_color_rgb: rgb, secondary_color_rgb: rgb, alternate_color_rgb: rgb } });
-    const game: any = { id: "nhl:7", league: "nhl", sport: "hockey", status: "in", start_time: new Date().toISOString(), period: 2, period_label: "2nd period", clock: "12:34", clock_s: 754, clock_dir: "down", intermission: false, home: t("MIN"), away: t("CBJ"), linescores: { home: [], away: [] }, stats: { home: {}, away: {} }, goals: [] };
+    const game = gameOf({ status: "in", period: 2, period_label: "2nd period", clock: "12:34", clock_s: 754, clock_dir: "down" });
     app.engine.ingestEspn(game);
     app.engine.ingestEspn({ ...game, clock_s: 750 }); // moved 4 s since the last poll => running
     expect(app.engine.games.get("nhl:7")?.clock_running).toBe(true);
-    const ok = (await (await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" })).json()) as any;
+    const ok = (await (await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" })).json()) as { delay_s: number; uncertainty_s: number };
     expect(ok.delay_s).toBeGreaterThanOrEqual(19.5);
     expect(ok.delay_s).toBeLessThanOrEqual(20.5);
     expect(ok.uncertainty_s).toBeGreaterThan(0);
@@ -247,17 +268,15 @@ describe("control plane", () => {
   });
 
   it("/api/sync reports the effective set: ticked + auto-synced favourites, minus exclusions", async () => {
-    const rgb = { r: 1, g: 2, b: 3 };
-    const t = (abbr: string): any => ({ id: abbr, abbr, name: abbr, display_name: abbr, logo: "", score: 0, options: { primary_color_rgb: rgb, secondary_color_rgb: rgb, alternate_color_rgb: rgb } });
-    const mk = (id: string, h: string, a: string): any => ({ id, league: "nhl", sport: "hockey", status: "pre", start_time: new Date().toISOString(), period: 0, period_label: "", clock: "", intermission: false, home: t(h), away: t(a), linescores: { home: [], away: [] }, stats: { home: {}, away: {} }, goals: [] });
+    const mk = (id: string, h: string, a: string) => gameOf({ id, home: team(h), away: team(a) });
     app.engine.ingestEspn(mk("nhl:a", "MIN", "CBJ"));
     app.engine.ingestEspn(mk("nhl:b", "TOR", "BOS"));
     await json("/api/sync", "PUT", { games: ["nhl:b"], favorites: [{ league: "nhl", abbr: "MIN" }] });
-    let s = (await (await fetch(`${base}/api/sync`)).json()) as any;
+    let s = await getJson<{ games: string[]; effective: string[] }>("/api/sync");
     expect(s.games).toEqual(["nhl:b"]);
     expect(s.effective.sort()).toEqual(["nhl:a", "nhl:b"]); // a is auto-synced through MIN
     await json("/api/settings", "PUT", { sync_excluded: ["nhl:a"] });
-    s = (await (await fetch(`${base}/api/sync`)).json()) as any;
+    s = await getJson<{ games: string[]; effective: string[] }>("/api/sync");
     expect(s.effective).toEqual(["nhl:b"]);
   });
 

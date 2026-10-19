@@ -23,7 +23,7 @@ import { errMsg, isCrossSite, RateLimiter, safeEq } from "./security.js";
 import { DATA_DIR, MEDIA_DIR, migrateAction } from "./store.js";
 import type { Game, LightAction, Settings } from "./types.js";
 
-export interface Deps {
+interface Deps {
   engine: Engine;
   poller: Poller;
   hub: PusherHub;
@@ -93,7 +93,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   const store = engine.store;
   const horns = d.horns ?? new HornService({ mediaDir: MEDIA_DIR, cacheDir: path.join(DATA_DIR, "cache", "horns"), settings: () => engine.settings });
   // pre-build processed horns in the background (production wiring only; tests inject their own service)
-  const warmHorns = () => { if (!d.horns) void horns.warm(hornFileList()).catch(() => {}); };
+  const warmHorns = () => { if (!d.horns) void horns.warm(hornFileList()).catch((e) => console.warn("[horns] warm-up failed:", errMsg(e))); };
   const config = d.config ?? loadConfig();
   const app = Fastify({ logger: { level: config.logLevel } });
   await app.register(formbody);

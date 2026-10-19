@@ -6,6 +6,7 @@ import { TeamBadge } from "../components/Kiosk";
 import { Button, Card, Chip, Notice, Switch } from "../components/ui";
 import { applyToggle, hasFav, isFav, syncView } from "./syncing";
 import type { Poll } from "./usePoll";
+import { errMsg } from "../lib/errors";
 
 type Day = { date: string; games: GameLite[] };
 
@@ -82,7 +83,7 @@ export default function Calendar({ schedule, settings, sync, setSync, saveNow }:
     } catch (e) {
       setSync(prevSync);
       void api.putSync({ games: prevSync.games }).catch(() => undefined);
-      setSaveErr(`Could not save sync: ${(e as Error).message}`);
+      setSaveErr(`Could not save sync: ${errMsg(e)}`);
     }
   };
   const toggleFav = (f: Fav) => {
@@ -99,7 +100,7 @@ export default function Calendar({ schedule, settings, sync, setSync, saveNow }:
       await api.putSync({ games });
       const ex = (settings?.sync_excluded ?? []).filter((x) => !ids.includes(x));
       if (settings && ex.length !== (settings.sync_excluded ?? []).length) await saveNow({ sync_excluded: ex });
-    } catch (e) { setSync(prev); setSaveErr(`Could not save sync: ${(e as Error).message}`); }
+    } catch (e) { setSync(prev); setSaveErr(`Could not save sync: ${errMsg(e)}`); }
   };
 
   return (

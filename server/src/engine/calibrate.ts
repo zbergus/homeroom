@@ -1,6 +1,6 @@
 import { leagueById, periodSeconds } from "../leagues.js";
 
-export interface RawClock {
+interface RawClock {
   league: string;
   period: number;
   clock_s: number;
@@ -10,7 +10,7 @@ export interface RawClock {
   age_s: number;
 }
 
-export interface Reading {
+interface Reading {
   period: number;
   /** seconds on the game clock as the TV shows them (down: remaining, up: elapsed) */
   clock_s: number;
@@ -32,7 +32,7 @@ export function parseClock(text: string): number | undefined {
   return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 10 : 0);
 }
 
-export interface Suggestion {
+interface Suggestion {
   delay_s: number;
   /** raw delay before rounding/clamping, for display */
   measured_s: number;

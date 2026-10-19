@@ -7,7 +7,7 @@ const BITRATES_V1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256
 const BITRATES_V2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
 const RATES: Record<number, number[]> = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
 
-export interface FrameHeader {
+interface FrameHeader {
   size: number;
   samples: number;
   sampleRate: number;
@@ -40,7 +40,7 @@ export function frameAt(b: Uint8Array, pos: number): FrameHeader | undefined {
 }
 
 /** Length of an ID3v2 tag at the start of the buffer (0 when absent). */
-export function id3v2Length(b: Uint8Array): number {
+function id3v2Length(b: Uint8Array): number {
   if (b.length < 10 || b[0] !== 0x49 || b[1] !== 0x44 || b[2] !== 0x33) return 0;
   if ((b[6] | b[7] | b[8] | b[9]) & 0x80) return 0;
   const size = (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
@@ -49,7 +49,7 @@ export function id3v2Length(b: Uint8Array): number {
 
 const tagAt = (b: Uint8Array, p: number, s: string) => p + 4 <= b.length && s.split("").every((c, i) => b[p + i] === c.charCodeAt(0));
 
-export interface Mp3Info {
+interface Mp3Info {
   /** audio frames in order (the Xing/Info/VBRI metadata frame is excluded) */
   frames: { offset: number; size: number; samples: number; sampleRate: number }[];
   durationS: number;

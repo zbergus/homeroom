@@ -6,12 +6,12 @@ import type { EventPayload, UiEventType } from "../types.js";
  * so none of them changes what is sent to the Home Assistant integration; the integration only ever
  * sees the five base event types.
  */
-export interface TriggerCtx {
+interface TriggerCtx {
   /** favourites as "league:ABBR" */
   favorites: ReadonlySet<string>;
 }
 
-export interface TriggerDef {
+interface TriggerDef {
   id: string;
   label: string;
   /** sports it makes sense for; undefined = all */
@@ -61,7 +61,7 @@ export function triggersFor(ev: EventPayload, ctx: TriggerCtx): string[] {
 }
 
 /** How a manual button synthesises its event: base type, default league, scoring delta, optional play text. */
-export interface ManualSpec {
+interface ManualSpec {
   type: Exclude<UiEventType, "goal_overturned">;
   card?: "yellow" | "red";
   league: string;

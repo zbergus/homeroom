@@ -4,6 +4,12 @@ import { ProviderHealth } from "../src/engine/health.js";
 import { Store } from "../src/store.js";
 import type { Game, Team } from "../src/types.js";
 
+interface StatusBody {
+  providers: { id: string }[];
+  warnings: string[];
+  server_time: number;
+}
+
 const rgb = { r: 1, g: 2, b: 3 };
 const team = (abbr: string): Team => ({ id: abbr, abbr, name: abbr, display_name: abbr, logo: "", score: 0, options: { primary_color_rgb: rgb, secondary_color_rgb: rgb, alternate_color_rgb: rgb } });
 const live = (id = "nhl:1"): Game => ({
@@ -72,8 +78,8 @@ describe("GET /api/status providers", () => {
     app.engine.ingestEspn(live());
     const run = (fn: () => Promise<unknown>) => fn().catch(() => {});
     await run(() => app.poller.health.track("espn:nhl", async () => 1));
-    let st = (await (await fetch(`${base}/api/status`)).json()) as any;
-    expect(st.providers.find((p: any) => p.id === "espn:nhl")).toMatchObject({ state: "ok", live_relevant: true, consecutive_failures: 0 });
+    let st = (await (await fetch(`${base}/api/status`)).json()) as StatusBody;
+    expect(st.providers.find((p) => p.id === "espn:nhl")).toMatchObject({ state: "ok", live_relevant: true, consecutive_failures: 0 });
     expect(st.warnings.join()).not.toMatch(/failing/);
 
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -81,8 +87,8 @@ describe("GET /api/status providers", () => {
     h.failure("espn:nhl", new Error("HTTP 502"));
     vi.setSystemTime(Date.now() + 75_000);
     h.failure("espn:nhl", new Error("HTTP 502"));
-    st = (await (await fetch(`${base}/api/status`)).json()) as any;
-    expect(st.providers.find((p: any) => p.id === "espn:nhl")).toMatchObject({ state: "failing", consecutive_failures: 2, last_error: "HTTP 502" });
+    st = (await (await fetch(`${base}/api/status`)).json()) as StatusBody;
+    expect(st.providers.find((p) => p.id === "espn:nhl")).toMatchObject({ state: "failing", consecutive_failures: 2, last_error: "HTTP 502" });
     expect(st.warnings.join()).toMatch(/ESPN NHL feed has been failing for 75 s/);
     expect(typeof st.server_time).toBe("number");
   });

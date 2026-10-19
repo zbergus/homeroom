@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { League, Settings, SettingsPatch } from "../types";
 import { Card, Notice, Switch } from "../components/ui";
+import { errMsg } from "../lib/errors";
 
 export default function Leagues({ leagues, settings, saveNow }: { leagues: League[]; settings: Settings; saveNow: (p: SettingsPatch) => Promise<void> }) {
   const enabled = settings.enabled_leagues ?? leagues.map((l) => l.id);
@@ -10,7 +11,7 @@ export default function Leagues({ leagues, settings, saveNow }: { leagues: Leagu
     const next = on ? [...new Set([...enabled, id])] : enabled.filter((x) => x !== id);
     if (next.length === 0) { setErr("Keep at least one league enabled."); return; }
     setBusy(true); setErr("");
-    try { await saveNow({ enabled_leagues: next }); } catch (e) { setErr(`Could not save: ${(e as Error).message}`); } finally { setBusy(false); }
+    try { await saveNow({ enabled_leagues: next }); } catch (e) { setErr(`Could not save: ${errMsg(e)}`); } finally { setBusy(false); }
   };
   return (
     <Card title="Leagues" subtitle="Disabled leagues stop being polled: no schedule, no live updates, less traffic to ESPN.">

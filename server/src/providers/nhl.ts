@@ -1,9 +1,8 @@
 import type { ScoringPlay } from "../types.js";
+import { getJson as fetchJson, optStr, type Raw, str } from "./raw.js";
 import { normStrength, parseSituation, strengthFromSituation } from "./strength.js";
 
 const BASE = process.env.NHL_BASE ?? "https://api-web.nhle.com/v1";
-
-type J = any;
 
 export interface NhlGame {
   id: number;
@@ -28,7 +27,7 @@ export interface NhlGame {
 }
 
 /** Skater situation as of the most recent play that carries a situationCode. */
-export function latestSituation(plays: J[] | undefined): NhlGame["situation"] {
+export function latestSituation(plays: Raw[] | undefined): NhlGame["situation"] {
   for (let i = (plays?.length ?? 0) - 1; i >= 0; i--) {
     const p = parseSituation(plays![i].situationCode);
     if (p) return { advantage: p.advantage, home_skaters: p.home_skaters, away_skaters: p.away_skaters };
@@ -36,12 +35,8 @@ export function latestSituation(plays: J[] | undefined): NhlGame["situation"] {
   return undefined;
 }
 
-async function getJson(url: string): Promise<J> {
-  // score/now redirects to /score/YYYY-MM-DD; fetch follows redirects by default
-  const res = await fetch(url, { signal: AbortSignal.timeout(6000), headers: { "user-agent": "homeroom/0.1" } });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
-  return res.json();
-}
+// score/now redirects to /score/YYYY-MM-DD; fetch follows redirects by default
+const getJson = (url: string): Promise<Raw> => fetchJson(url, 6000);
 
 const stateOf = (s: string): NhlGame["state"] => {
   if (s === "LIVE" || s === "CRIT") return "in";
@@ -51,27 +46,27 @@ const stateOf = (s: string): NhlGame["state"] => {
 
 const ord = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : n === 4 ? "OT" : n === 5 ? "SO" : `${n}`);
 
-export function normalizeNhl(g: J): NhlGame {
-  const goals: ScoringPlay[] = (g.goals ?? []).map((x: J): ScoringPlay => ({
+export function normalizeNhl(g: Raw): NhlGame {
+  const goals: ScoringPlay[] = (g.goals ?? []).map((x: Raw): ScoringPlay => ({
     key: `nhl-${g.id}-${x.period}-${x.timeInPeriod}-${x.homeScore}-${x.awayScore}`,
     period: Number(x.period ?? 0),
     period_label: ord(Number(x.period ?? 0)),
     clock: String(x.timeInPeriod ?? ""),
     team_abbr: String(x.teamAbbrev ?? ""),
-    scorer: [x.firstName?.default, x.lastName?.default].filter(Boolean).join(" ") || x.name?.default,
-    assists: (x.assists ?? []).map((a: J) => a.name?.default).filter(Boolean),
+    scorer: [str(x.firstName?.default), str(x.lastName?.default)].filter(Boolean).join(" ") || optStr(x.name?.default),
+    assists: (x.assists ?? []).flatMap((a: Raw) => optStr(a.name?.default) ?? []),
     strength: normStrength(x.strength, x.goalModifier === "empty-net"),
     home_score: Number(x.homeScore ?? 0),
     away_score: Number(x.awayScore ?? 0),
   }));
   return {
-    id: g.id,
-    date: g.gameDate,
-    start_utc: g.startTimeUTC,
-    homeNick: String(g.homeTeam?.name?.default ?? "").toLowerCase(),
-    awayNick: String(g.awayTeam?.name?.default ?? "").toLowerCase(),
-    homeAbbr: g.homeTeam?.abbrev ?? "",
-    awayAbbr: g.awayTeam?.abbrev ?? "",
+    id: Number(g.id),
+    date: str(g.gameDate),
+    start_utc: str(g.startTimeUTC),
+    homeNick: str(g.homeTeam?.name?.default).toLowerCase(),
+    awayNick: str(g.awayTeam?.name?.default).toLowerCase(),
+    homeAbbr: str(g.homeTeam?.abbrev),
+    awayAbbr: str(g.awayTeam?.abbrev),
     state: stateOf(g.gameState),
     period: Number(g.periodDescriptor?.number ?? g.period ?? 0),
     clock: String(g.clock?.timeRemaining ?? ""),
@@ -105,13 +100,13 @@ export function withOfficialStrength(pbpGoals: ScoringPlay[], official: ScoringP
 }
 
 /** Pure parse of a play-by-play payload (score, clock, goals with scorers, current skater situation). */
-export function parsePbp(d: J): NhlGame {
+export function parsePbp(d: Raw): NhlGame {
   const roster = new Map<number, string>();
   for (const r of d.rosterSpots ?? []) roster.set(r.playerId, `${r.firstName?.default ?? ""} ${r.lastName?.default ?? ""}`.trim());
-  const abbrById: Record<number, string> = { [d.homeTeam?.id]: d.homeTeam?.abbrev, [d.awayTeam?.id]: d.awayTeam?.abbrev };
+  const abbrById = new Map<number, string>([[Number(d.homeTeam?.id), str(d.homeTeam?.abbrev)], [Number(d.awayTeam?.id), str(d.awayTeam?.abbrev)]]);
   const goals: ScoringPlay[] = (d.plays ?? [])
-    .filter((p: J) => p.typeDescKey === "goal")
-    .map((p: J): ScoringPlay => {
+    .filter((p: Raw) => p.typeDescKey === "goal")
+    .map((p: Raw): ScoringPlay => {
       const x = p.details ?? {};
       const per = Number(p.periodDescriptor?.number ?? 0);
       return {
@@ -119,22 +114,22 @@ export function parsePbp(d: J): NhlGame {
         period: per,
         period_label: ord(per),
         clock: String(p.timeInPeriod ?? ""),
-        team_abbr: abbrById[x.eventOwnerTeamId] ?? "",
+        team_abbr: abbrById.get(Number(x.eventOwnerTeamId)) ?? "",
         scorer: roster.get(x.scoringPlayerId),
-        assists: [x.assist1PlayerId, x.assist2PlayerId].filter(Boolean).map((i: number) => roster.get(i)).filter(Boolean) as string[],
+        assists: [x.assist1PlayerId, x.assist2PlayerId].flatMap((i: number) => (i ? (roster.get(i) ?? []) : [])),
         strength: strengthFromSituation(p.situationCode, x.eventOwnerTeamId === d.homeTeam?.id),
         home_score: Number(x.homeScore ?? 0),
         away_score: Number(x.awayScore ?? 0),
       };
     });
   return {
-    id: d.id,
-    date: d.gameDate,
-    start_utc: d.startTimeUTC,
-    homeNick: String(d.homeTeam?.commonName?.default ?? d.homeTeam?.name?.default ?? "").toLowerCase(),
-    awayNick: String(d.awayTeam?.commonName?.default ?? d.awayTeam?.name?.default ?? "").toLowerCase(),
-    homeAbbr: d.homeTeam?.abbrev ?? "",
-    awayAbbr: d.awayTeam?.abbrev ?? "",
+    id: Number(d.id),
+    date: str(d.gameDate),
+    start_utc: str(d.startTimeUTC),
+    homeNick: str(d.homeTeam?.commonName?.default ?? d.homeTeam?.name?.default).toLowerCase(),
+    awayNick: str(d.awayTeam?.commonName?.default ?? d.awayTeam?.name?.default).toLowerCase(),
+    homeAbbr: str(d.homeTeam?.abbrev),
+    awayAbbr: str(d.awayTeam?.abbrev),
     state: stateOf(d.gameState),
     period: Number(d.periodDescriptor?.number ?? 0),
     clock: String(d.clock?.timeRemaining ?? ""),

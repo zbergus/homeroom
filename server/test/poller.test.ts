@@ -14,7 +14,7 @@ const game = (id: string): Game => ({
 function setup(today: string, fetchDay: ReturnType<typeof vi.fn>) {
   const engine = new Engine(new Store(":memory:"));
   const poller = new Poller(engine, fetchDay as never, () => today);
-  const tick = () => (poller as unknown as { tickEspn(l: string): Promise<void> }).tickEspn("nhl");
+  const tick = () => poller.tickEspn("nhl");
   return { engine, tick };
 }
 
@@ -34,7 +34,7 @@ describe("poller: ESPN's lagging default day", () => {
   });
 
   it("makes a single request when the default scoreboard is already today", async () => {
-    const fetchDay = vi.fn(async () => ({ games: [game("nhl:today")], day: "2026-10-19" }));
+    const fetchDay = vi.fn(async (_league: string, _date?: string) => ({ games: [game("nhl:today")], day: "2026-10-19" }));
     const { engine, tick } = setup("2026-10-19", fetchDay);
     await tick();
     await tick();

@@ -7,7 +7,7 @@ import type { PusherHub } from "./pusher.js";
 const rgb = (c: Rgb) => [c.r, c.g, c.b];
 
 /** Flat body for the direct-REST path (`connectedroom_<type>` events on the HA bus). */
-export function flatBody(ev: EventPayload, ttsEnabled: boolean): Record<string, unknown> {
+function flatBody(ev: EventPayload, ttsEnabled: boolean): Record<string, unknown> {
   const o = (ev.team ?? ev.game.home).options;
   return {
     type: ev.type,

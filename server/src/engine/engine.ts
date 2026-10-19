@@ -12,6 +12,7 @@ import { DelayBuffer } from "./delay.js";
 import { diffGame, type Detected } from "./diff.js";
 import { naturalText, scoringLabel } from "./text.js";
 import { MANUAL_SPECS } from "./triggers.js";
+import { errMsg } from "../security.js";
 
 type Out = { kind: "game"; game: Game } | { kind: "event"; payload: EventPayload };
 
@@ -28,7 +29,7 @@ const SHOWN_PERSIST_EVERY_MS = 5_000;
 type BuildType = Exclude<UiEventType, "goal_overturned">;
 const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 
-export interface EngineEvents {
+interface EngineEvents {
   event: [EventPayload];
   game: [Game];
 }
@@ -537,7 +538,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       try {
         this.store.savePending(o.payload.event_id, o.payload.game.id, at, JSON.stringify(o.payload));
       } catch (err) {
-        console.error("[engine] could not persist pending event", (err as Error).message);
+        console.error("[engine] could not persist pending event", errMsg(err));
       }
     }
   }
@@ -588,7 +589,8 @@ export class Engine extends EventEmitter<EngineEvents> {
         this.shown.set(g.id, g);
         this.restoredAt.set(g.id, now);
         shown++;
-      } catch {
+      } catch (err) {
+        console.warn(`[engine] dropping unreadable saved snapshot for ${r.game_id}: ${errMsg(err)}`);
         this.store.deleteShown(r.game_id);
       }
     }
@@ -597,8 +599,8 @@ export class Engine extends EventEmitter<EngineEvents> {
       let payload: EventPayload | undefined;
       try {
         payload = JSON.parse(r.json) as EventPayload;
-      } catch {
-        /* corrupt row */
+      } catch (err) {
+        console.warn(`[engine] unreadable pending event ${r.event_id}: ${errMsg(err)}`);
       }
       if (!payload || overdue > this.restoreGraceMs) {
         console.warn(`[engine] dropping stale pending event ${r.event_id} (${payload?.type ?? "?"} ${r.game_id}), ${Math.round(overdue / 1000)}s overdue after restart`);

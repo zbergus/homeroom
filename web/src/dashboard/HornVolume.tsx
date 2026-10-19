@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Settings, SettingsPatch } from "../types";
 import { Button, Card, Field, inputCls, Notice, Switch } from "../components/ui";
+import { errMsg } from "../lib/errors";
 
 const PLAYER_RE = /^media_player\.[a-z0-9_]+$/;
 const parse = (t: string) => t.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
@@ -28,7 +29,7 @@ export default function HornVolume({ settings, saveNow }: { settings: Settings; 
     if (enabled && !list.length) return setMsg({ k: "err", t: "Add at least one media player, or turn this off." });
     setBusy(true);
     try { await saveNow({ horn_volume: enabled ? pct / 100 : null, horn_players: list }); setMsg({ k: "ok", t: enabled ? "Saved. The volume is set just before each goal horn." : "Saved. Horn volume is off." }); }
-    catch (e) { setMsg({ k: "err", t: (e as Error).message }); } finally { setBusy(false); }
+    catch (e) { setMsg({ k: "err", t: errMsg(e) }); } finally { setBusy(false); }
   };
 
   return (

@@ -12,7 +12,7 @@ type Attrs = Record<string, unknown>;
 const arr = (c: Rgb) => [c.r, c.g, c.b];
 
 /** Effect names a light advertises (`effect_list`), and which of them means "no effect". */
-export function effectList(dev: Record<string, unknown>): string[] {
+function effectList(dev: Record<string, unknown>): string[] {
   const l = (dev.capabilities as { effect_list?: unknown } | null | undefined)?.effect_list;
   return Array.isArray(l) ? l.map(String) : [];
 }

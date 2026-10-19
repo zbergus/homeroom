@@ -1,17 +1,10 @@
-import type { Game, GameLite, RGB, Team } from "../types";
+import type { Game, GameLite, Team } from "../types";
 import { gradientFor, resolveTeam } from "./colors";
-
-export const rgbCss = (c: RGB | undefined, fallback = "#334155") =>
-  c ? `rgb(${c.r} ${c.g} ${c.b})` : fallback;
 
 /** Solo colour for a team (white text stays >= 4.5:1). Matchup-aware colours: see lib/colors.ts. */
 export function teamColors(t: Team): { primary: string; secondary: string } {
   const r = resolveTeam(t);
   return { primary: r.fill, secondary: r.deep };
-}
-
-export function lum(c?: RGB) {
-  return c ? (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255 : 0.3;
 }
 
 /** Hard-ish diagonal split of the two *resolved* matchup colours. */
@@ -49,17 +42,13 @@ export function countdown(ms: number): string {
 export const timeLabel = (ms: number) =>
   new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-export const dayKey = (d: Date) =>
+const dayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-export const scoreOf = (t: Team) => t.score ?? 0;
 
 export const ordinal = (n: number) => {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
-
-export const teamKey = (league: string, abbr: string) => `${league}:${abbr}`;
 
 export function sortGames<T extends GameLite>(games: T[]): T[] {
   const rank = (g: T) => (g.status === "in" ? 0 : g.status === "pre" ? 1 : 2);

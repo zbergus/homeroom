@@ -4,6 +4,7 @@ import { fetchNhlGame, fetchNhlScores, matchNhl, withOfficialStrength } from "..
 import type { Game } from "../types.js";
 import type { Engine } from "./engine.js";
 import { ProviderHealth } from "./health.js";
+import { errMsg } from "../security.js";
 
 const WARM_WINDOW_MS = 10 * 60_000;
 const WARM_INTERVAL_MS = 30_000;
@@ -104,7 +105,7 @@ export class Poller {
         this.failures.set(key, 0);
       } catch (err) {
         this.failures.set(key, (this.failures.get(key) ?? 0) + 1);
-        log(key, "failed:", (err as Error).message);
+        log(key, "failed:", errMsg(err));
       }
       if (this.stopped) return;
       const base = interval();
@@ -151,7 +152,8 @@ export class Poller {
    * for this afternoon would not exist yet. When the default payload is on another day we ask for today explicitly
    * (every tick) and still re-read the default every 5 minutes so a late game from last night keeps finishing.
    */
-  private async tickEspn(leagueId: string): Promise<void> {
+  /** One poll pass for a league. Public so tests can drive it without timers. */
+  async tickEspn(leagueId: string): Promise<void> {
     if (!this.engine.settings.enabled_leagues.includes(leagueId)) return;
     const now = Date.now();
     const today = this.todayET();
@@ -203,8 +205,9 @@ export class Poller {
         try {
           const full = await this.health.track("nhl", () => fetchNhlGame(n.id), false);
           feed = { ...n, goals: full.goals.length >= n.goals.length ? withOfficialStrength(full.goals, n.goals) : n.goals, situation: full.situation };
-        } catch {
-          /* keep score/now version */
+        } catch (err) {
+          // the play-by-play feed is the secondary source here: keep the score/now version (health already counted the failure)
+          log("nhl", "play-by-play unavailable, using score/now:", errMsg(err));
         }
       }
       this.engine.ingestNhl(g.id, feed);
@@ -218,7 +221,8 @@ export class Poller {
    * Boxscore rows + scoring plays for synced games: every minute while live, and once (then every 30 min)
    * for a finished game that has neither, so its Summary screen is not empty when you open it after the final.
    */
-  private async tickSummary(): Promise<void> {
+  /** One summary-refresh pass. Public so tests can drive it without timers. */
+  async tickSummary(): Promise<void> {
     const now = Date.now();
     for (const g of [...this.engine.games.values()]) {
       if (!this.engine.isSynced(g.id)) continue;
@@ -232,7 +236,8 @@ export class Poller {
   }
 
   /** team form + players to watch, for synced games starting within 3 h or already live */
-  private async tickInsight(): Promise<void> {
+  /** One insight-refresh pass. Public so tests can drive it without timers. */
+  async tickInsight(): Promise<void> {
     const now = Date.now();
     let n = 0;
     for (const g of [...this.engine.games.values()]) {
@@ -265,7 +270,7 @@ export class Poller {
             games = { at: Date.now(), games: await this.health.track("schedule", () => fetchScoreboard(l, d)) };
             this.scheduleCache.set(key, games);
           } catch (err) {
-            log("schedule", key, (err as Error).message);
+            log("schedule", key, errMsg(err));
           }
         }
         for (const g of games?.games ?? []) found.set(g.id, g);

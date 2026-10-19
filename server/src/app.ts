@@ -12,7 +12,7 @@ import { UiHub } from "./outputs/ui.js";
 import { isCrossSite } from "./security.js";
 import { Store } from "./store.js";
 
-export interface AppOptions {
+interface AppOptions {
   store?: Store;
   appKey: string;
   appSecret: string;

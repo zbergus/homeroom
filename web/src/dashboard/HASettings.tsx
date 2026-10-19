@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Settings, SettingsPatch } from "../types";
 import { api } from "../lib/api";
 import { Button, Card, Field, inputCls, Notice, Switch } from "../components/ui";
+import { errMsg } from "../lib/errors";
 
 export default function HASettings({ settings, saveNow }: { settings: Settings; saveNow: (p: SettingsPatch) => Promise<void> }) {
   const [url, setUrl] = useState(settings.ha.url);
@@ -16,9 +17,9 @@ export default function HASettings({ settings, saveNow }: { settings: Settings; 
 
   const typing = !tokenSet || replacing;
   const patch = (): SettingsPatch => ({ ha: { url: url.trim(), fire_rest_events: rest, ...(typing && token ? { token } : {}) }, public_base_url: base.trim() });
-  const run = async (fn: () => Promise<string | void>) => {
+  const run = async (fn: () => Promise<string> | Promise<void>) => {
     setBusy(true); setMsg(null);
-    try { const t = await fn(); setMsg({ k: "ok", t: t || "Saved." }); } catch (e) { setMsg({ k: "err", t: (e as Error).message }); } finally { setBusy(false); }
+    try { const t = await fn(); setMsg({ k: "ok", t: t || "Saved." }); } catch (e) { setMsg({ k: "err", t: errMsg(e) }); } finally { setBusy(false); }
   };
   const save = () => run(async () => { await saveNow(patch()); setToken(""); setReplacing(false); });
   const test = () => run(async () => {

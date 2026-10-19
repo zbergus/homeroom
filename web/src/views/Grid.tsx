@@ -6,7 +6,7 @@ import { useOnlyMine } from "../lib/mine";
 import { countdown, diagonal, statusText, sortGames, startMs, timeLabel } from "../lib/format";
 import { ConnDot, TeamBadge } from "../components/Kiosk";
 
-export const columnsFor = (n: number, o: "portrait" | "landscape") => {
+const columnsFor = (n: number, o: "portrait" | "landscape") => {
   if (o === "portrait") return n <= 1 ? 1 : 2;
   if (n <= 4) return Math.max(1, n);
   if (n <= 6) return 3;

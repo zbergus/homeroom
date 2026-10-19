@@ -1,0 +1,37 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+	"files": {
+		"includes": [
+			"server/src/**",
+			"server/test/**",
+			"web/src/**",
+			"web/scripts/**",
+			"scripts/**/*.mjs",
+			"!**/fixtures/**",
+			"!**/*.css",
+			"!**/node_modules/**",
+			"!**/dist/**"
+		]
+	},
+	"formatter": { "enabled": false },
+	"assist": { "enabled": false },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "none",
+			"suspicious": {
+				"noExplicitAny": "error",
+				"noDoubleEquals": "error",
+				"noConfusingVoidType": "error",
+				"noDebugger": "error"
+			},
+			"correctness": {
+				"noUnusedImports": "error",
+				"noUnusedVariables": "error",
+				"noUnusedFunctionParameters": "off"
+			},
+			"style": { "useConst": "error" },
+			"nursery": { "noFloatingPromises": "error", "noMisusedPromises": "error" }
+		}
+	}
+}

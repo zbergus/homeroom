@@ -187,7 +187,7 @@ function build(s: Seed): Game {
   return g;
 }
 
-export type MockSink = {
+type MockSink = {
   snapshot: (g: Game[]) => void;
   game: (g: Game) => void;
   event: (e: EventPayload) => void;

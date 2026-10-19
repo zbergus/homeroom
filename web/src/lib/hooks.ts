@@ -42,7 +42,7 @@ export function useQueryParam(name: string): string | null {
   return new URLSearchParams(location.search).get(name);
 }
 
-export type Orientation = "portrait" | "landscape";
+type Orientation = "portrait" | "landscape";
 export function useOrientation(): Orientation {
   const get = (): Orientation => (window.innerHeight > window.innerWidth ? "portrait" : "landscape");
   const [o, setO] = useState(get);

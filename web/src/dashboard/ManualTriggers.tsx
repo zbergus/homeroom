@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import { Button, Card, Field, inputCls, Notice } from "../components/ui";
 import { groupTriggers } from "./triggerGroups";
 import { useToast } from "./Toast";
+import { errMsg } from "../lib/errors";
+import { copyText } from "../lib/clipboard";
 
 interface Props { triggers: Trigger[]; triggersErr: string; leagues: League[]; hasToken: boolean }
 
@@ -29,7 +31,7 @@ export default function ManualTriggers({ triggers, triggersErr, leagues, hasToke
     try {
       const r = await api.trigger({ trigger: t.id, ...(league ? { league } : {}), ...(team ? { team_abbr: team } : {}), apply_delay: delay });
       show(`Fired ${t.label}${r.event?.type ? ` (event: ${r.event.type})` : ""}${delay ? ", with stream delay" : ", immediately"}.`);
-    } catch (e) { show(`${t.label} failed: ${(e as Error).message}`, "err"); } finally { setBusy(""); }
+    } catch (e) { show(`${t.label} failed: ${errMsg(e)}`, "err"); } finally { setBusy(""); }
   };
   const hook = (t: Trigger) => {
     const q = new URLSearchParams();
@@ -40,8 +42,7 @@ export default function ManualTriggers({ triggers, triggersErr, leagues, hasToke
     return `${location.origin}/api/hook/${t.id}${s ? `?${s}` : ""}`;
   };
   const copy = async (t: Trigger) => {
-    const url = hook(t);
-    try { await navigator.clipboard.writeText(url); } catch { const x = document.createElement("textarea"); x.value = url; document.body.appendChild(x); x.select(); document.execCommand("copy"); x.remove(); }
+    await copyText(hook(t));
     setCopied(t.id); setTimeout(() => setCopied(""), 1800);
   };
 

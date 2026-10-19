@@ -1,6 +1,6 @@
 import type { Trigger } from "../types";
 
-export const GROUPS = [
+const GROUPS = [
   { key: "hockey", label: "Hockey / soccer" },
   { key: "football", label: "Football" },
   { key: "basketball", label: "Basketball" },

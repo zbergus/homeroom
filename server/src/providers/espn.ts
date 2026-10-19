@@ -1,14 +1,13 @@
 import { isShootout, leagueById, periodLabel, type LeagueDef } from "../leagues.js";
 import type { Game, GameStatus, Incident, LeaderRef, Rgb, ScoringPlay, StatRow, Team } from "../types.js";
 import { buildStatRows } from "./boxscore.js";
+import { finite, getJson, optStr, type Raw, str } from "./raw.js";
 import { normStrength } from "./strength.js";
 
 const BASE = process.env.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
 const WEB_BASE = process.env.ESPN_WEB_BASE ?? "https://site.web.api.espn.com/apis/common/v3/sports";
 
-type J = any; // ESPN payloads are undocumented and wide; we pick fields defensively.
-
-export function hexToRgb(hex: string | undefined, fallback: Rgb): Rgb {
+function hexToRgb(hex: string | undefined, fallback: Rgb): Rgb {
   if (!hex || !/^[0-9a-f]{6}$/i.test(hex)) return fallback;
   return { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) };
 }
@@ -16,17 +15,17 @@ export function hexToRgb(hex: string | undefined, fallback: Rgb): Rgb {
 const GREY: Rgb = { r: 90, g: 98, b: 110 };
 const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 
-function toTeam(c: J): Team {
+function toTeam(c: Raw): Team {
   const t = c.team ?? {};
   const primary = hexToRgb(t.color, GREY);
   return {
     id: String(t.id ?? c.id ?? ""),
     abbr: String(t.abbreviation ?? t.shortDisplayName ?? "???").toUpperCase(),
-    name: t.name ?? t.shortDisplayName ?? t.displayName ?? "",
-    display_name: t.displayName ?? t.name ?? "",
-    logo: t.logo ?? "",
+    name: str(t.name ?? t.shortDisplayName ?? t.displayName),
+    display_name: str(t.displayName ?? t.name),
+    logo: str(t.logo),
     score: Number(c.score ?? 0) || 0,
-    record: (c.records ?? []).find((r: J) => r.type === "total" || r.name === "overall")?.summary,
+    record: optStr((c.records ?? []).find((r: Raw) => r.type === "total" || r.name === "overall")?.summary),
     options: {
       primary_color_rgb: primary,
       secondary_color_rgb: hexToRgb(t.alternateColor, WHITE),
@@ -35,7 +34,7 @@ function toTeam(c: J): Team {
   };
 }
 
-function statusOf(type: J): { status: GameStatus; intermission: boolean } {
+function statusOf(type: Raw): { status: GameStatus; intermission: boolean } {
   const name: string = type?.name ?? "";
   const state: string = type?.state ?? "pre";
   const intermission = /END_PERIOD|HALFTIME|END_OF_|END_INNING|STATUS_BREAK/i.test(name) || /^(end of|halftime|intermission)/i.test(type?.detail ?? "");
@@ -44,12 +43,12 @@ function statusOf(type: J): { status: GameStatus; intermission: boolean } {
 }
 
 /** Top "points" (else "goals") leader of a competitor, as shown on the scoreboard payload. */
-export function pickLeader(c: J): LeaderRef | undefined {
-  const cats: J[] = c.leaders ?? [];
+export function pickLeader(c: Raw): LeaderRef | undefined {
+  const cats: Raw[] = c.leaders ?? [];
   const cat = cats.find((l) => l.name === "points") ?? cats.find((l) => l.name === "goals") ?? cats.find((l) => l.name === "pointsPerGame");
   const a = cat?.leaders?.[0]?.athlete;
   if (!a?.id) return undefined;
-  const name: string = a.displayName ?? a.fullName ?? "";
+  const name = str(a.displayName ?? a.fullName);
   const i = name.indexOf(" ");
   return {
     id: String(a.id),
@@ -57,8 +56,8 @@ export function pickLeader(c: J): LeaderRef | undefined {
     first: i > 0 ? name.slice(0, i) : "",
     last: i > 0 ? name.slice(i + 1) : name,
     jersey: a.jersey ? String(a.jersey) : undefined,
-    position: typeof a.position === "string" ? a.position : a.position?.abbreviation,
-    headshot: typeof a.headshot === "string" ? a.headshot : a.headshot?.href,
+    position: optStr(typeof a.position === "string" ? a.position : a.position?.abbreviation),
+    headshot: optStr(typeof a.headshot === "string" ? a.headshot : a.headshot?.href),
   };
 }
 
@@ -72,7 +71,7 @@ export function soccerPeriod(clock: string): number {
  * Football (soccer) match events from the scoreboard's `competitions[0].details[]`: goals (with scorer, own goals credited
  * to the team that benefits, shootout kicks excluded) and bookings. Needs no extra request.
  */
-export function parseSoccerDetails(details: J[] | undefined, homeId: string, awayId: string, homeAbbr: string, awayAbbr: string, league: LeagueDef): { goals: ScoringPlay[]; incidents: Incident[] } {
+function parseSoccerDetails(details: Raw[] | undefined, homeId: string, awayId: string, homeAbbr: string, awayAbbr: string, league: LeagueDef): { goals: ScoringPlay[]; incidents: Incident[] } {
   const goals: ScoringPlay[] = [];
   const incidents: Incident[] = [];
   let home = 0, away = 0;
@@ -82,7 +81,7 @@ export function parseSoccerDetails(details: J[] | undefined, homeId: string, awa
     const abbr = teamId === homeId ? homeAbbr : teamId === awayId ? awayAbbr : "";
     if (!abbr) continue;
     const clock = String(d.clock?.displayValue ?? "");
-    const player: string | undefined = d.athletesInvolved?.[0]?.displayName;
+    const player = optStr(d.athletesInvolved?.[0]?.displayName);
     const key = `${clock}|${teamId}|${d.type?.text ?? ""}|${player ?? ""}`;
     if (d.scoringPlay) {
       if (abbr === homeAbbr) home += Number(d.scoreValue ?? 1) || 1;
@@ -95,7 +94,7 @@ export function parseSoccerDetails(details: J[] | undefined, homeId: string, awa
         team_abbr: abbr,
         scorer: player,
         assists: [],
-        text: d.type?.text,
+        text: optStr(d.type?.text),
         home_score: home,
         away_score: away,
       });
@@ -107,7 +106,7 @@ export function parseSoccerDetails(details: J[] | undefined, homeId: string, awa
   return { goals, incidents };
 }
 
-function statsMap(c: J): Record<string, string> {
+function statsMap(c: Raw): Record<string, string> {
   const out: Record<string, string> = {};
   for (const s of c.statistics ?? []) {
     if (s?.abbreviation && s.displayValue !== undefined) out[s.abbreviation] = String(s.displayValue);
@@ -115,13 +114,15 @@ function statsMap(c: J): Record<string, string> {
   return out;
 }
 
-export function normalizeEvent(league: LeagueDef, ev: J): Game | undefined {
+export function normalizeEvent(league: LeagueDef, ev: Raw): Game | undefined {
   const comp = ev.competitions?.[0];
   if (!comp) return undefined;
-  const competitors: J[] = comp.competitors ?? [];
+  const competitors: Raw[] = comp.competitors ?? [];
   const homeC = competitors.find((c) => c.homeAway === "home");
   const awayC = competitors.find((c) => c.homeAway === "away");
   if (!homeC || !awayC) return undefined;
+  const start = new Date(ev.date);
+  if (Number.isNaN(start.getTime())) return undefined; // one malformed event must not take the whole scoreboard down
   const { status, intermission } = statusOf(ev.status?.type ?? comp.status?.type);
   const period = Number(ev.status?.period ?? 0) || 0;
   const odds = comp.odds?.[0];
@@ -130,7 +131,7 @@ export function normalizeEvent(league: LeagueDef, ev: J): Game | undefined {
     league: league.id,
     sport: league.sport,
     status,
-    start_time: new Date(ev.date).toISOString(),
+    start_time: start.toISOString(),
     period: status === "pre" ? 0 : period,
     period_label: status === "pre" ? "" : periodLabel(league, period),
     clock: status === "in" && !isShootout(league, period) ? String(ev.status?.displayClock ?? "") : "",
@@ -141,12 +142,12 @@ export function normalizeEvent(league: LeagueDef, ev: J): Game | undefined {
     home: toTeam(homeC),
     away: toTeam(awayC),
     linescores: {
-      home: (homeC.linescores ?? []).map((l: J) => Number(l.value ?? 0)),
-      away: (awayC.linescores ?? []).map((l: J) => Number(l.value ?? 0)),
+      home: (homeC.linescores ?? []).map((l: Raw) => Number(l.value ?? 0)),
+      away: (awayC.linescores ?? []).map((l: Raw) => Number(l.value ?? 0)),
     },
     stats: { home: statsMap(homeC), away: statsMap(awayC) },
     goals: [],
-    odds: odds ? { details: odds.details, over_under: odds.overUnder } : undefined,
+    odds: odds ? { details: optStr(odds.details), over_under: finite(odds.overUnder) } : undefined,
     leaders: { home: pickLeader(homeC), away: pickLeader(awayC) },
     authority: "espn",
   };
@@ -158,13 +159,7 @@ export function normalizeEvent(league: LeagueDef, ev: J): Game | undefined {
   return game;
 }
 
-async function getJson(url: string, timeoutMs = 8000): Promise<J> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { "user-agent": "homeroom/0.1" } });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
-  return res.json();
-}
-
-export interface ScoreboardDay {
+interface ScoreboardDay {
   games: Game[];
   /** the day ESPN says this payload covers, "YYYY-MM-DD" (its default "today" lags the real date for hours) */
   day?: string;
@@ -177,7 +172,7 @@ export async function fetchScoreboardDay(leagueId: string, date?: string): Promi
   if (date) q.set("dates", date);
   const data = await getJson(`${BASE}/${league.espn}/scoreboard?${q}`);
   return {
-    games: (data.events ?? []).map((e: J) => normalizeEvent(league, e)).filter(Boolean) as Game[],
+    games: (data.events ?? []).map((e: Raw) => normalizeEvent(league, e)).filter(Boolean) as Game[],
     day: typeof data.day?.date === "string" ? data.day.date : undefined,
   };
 }
@@ -199,12 +194,12 @@ export async function fetchSummary(gameId: string, homeAbbrByTeamId: Record<stri
   return parseSummary(league, data, homeAbbrByTeamId);
 }
 
-export function parseSummary(league: LeagueDef, data: J, homeAbbrByTeamId: Record<string, string>): Summary {
-  const raw: J[] = data.scoringPlays?.length ? data.scoringPlays : (data.plays ?? []).filter((p: J) => p.scoringPlay);
-  const plays = raw.map((p: J): ScoringPlay => {
-    const parts: J[] = p.participants ?? [];
-    const scorer = parts.find((x) => x.type === "scorer")?.athlete?.displayName;
-    const assists = parts.filter((x) => x.type === "assister" || x.type === "assist").map((x) => x.athlete?.displayName).filter(Boolean);
+export function parseSummary(league: LeagueDef, data: Raw, homeAbbrByTeamId: Record<string, string>): Summary {
+  const raw: Raw[] = data.scoringPlays?.length ? data.scoringPlays : (data.plays ?? []).filter((p: Raw) => p.scoringPlay);
+  const plays = raw.map((p: Raw): ScoringPlay => {
+    const parts: Raw[] = p.participants ?? [];
+    const scorer = optStr(parts.find((x) => x.type === "scorer")?.athlete?.displayName);
+    const assists = parts.filter((x) => x.type === "assister" || x.type === "assist").flatMap((x) => optStr(x.athlete?.displayName) ?? []);
     const teamId = String(p.team?.id ?? "");
     return {
       key: String(p.id ?? `${p.period?.number}-${p.clock?.displayValue}-${p.homeScore}-${p.awayScore}`),
@@ -215,7 +210,7 @@ export function parseSummary(league: LeagueDef, data: J, homeAbbrByTeamId: Recor
       scorer,
       assists,
       strength: normStrength(p.strength?.abbreviation ?? p.strength?.text, /empty net/i.test(p.text ?? "")),
-      text: p.text,
+      text: optStr(p.text),
       home_score: Number(p.homeScore ?? 0),
       away_score: Number(p.awayScore ?? 0),
     };

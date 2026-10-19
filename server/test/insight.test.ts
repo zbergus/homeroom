@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFormRows, buildInsight, buildPlayerWatch, clearInsightCache, formSummary, parseSchedule, parseTeamStats } from "../src/providers/insight.js";
 import { normalizeEvent, parseSummary, pickLeader } from "../src/providers/espn.js";
 import { leagueById } from "../src/leagues.js";
+import type { Raw } from "../src/providers/raw.js";
 
 const fx = (n: string) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", n), "utf8"));
 beforeEach(clearInsightCache);
@@ -108,7 +109,7 @@ describe("buildInsight orchestration", () => {
 describe("parseSummary on real payloads", () => {
   it("hockey: scorer + assists + normalised strength, and stat rows from the same payload", () => {
     const s = fx("espn-nhl-summary.json");
-    const ids = Object.fromEntries(s.header.competitions[0].competitors.map((c: any) => [c.id, c.team.abbreviation]));
+    const ids = Object.fromEntries(s.header.competitions[0].competitors.map((c: Raw) => [c.id, c.team.abbreviation]));
     const { plays, rows } = parseSummary(leagueById("nhl"), s, ids);
     expect(plays.length).toBe(3);
     expect(plays[0]).toMatchObject({ scorer: "Danila Yurov", period: 1 });

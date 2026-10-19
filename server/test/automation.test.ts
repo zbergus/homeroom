@@ -21,6 +21,8 @@ const mk = (o: Partial<Game> & { h?: number; a?: number } = {}): Game => {
 };
 const play = (abbr: string): ScoringPlay => ({ key: `p-${abbr}`, period: 1, period_label: "1st", clock: "1:00", team_abbr: abbr, scorer: "A", assists: [], home_score: 0, away_score: 0 });
 
+const baseEvent = (): EventPayload => ({ event_id: "e", type: "goal", emitted_at: 0, delay_s: 0, league: "nhl", sport: "hockey", game: mk(), natural_text: "" });
+
 function setup(opts: { synced?: string[]; favorites?: string[] } = {}) {
   const store = new Store(":memory:");
   store.setSyncedGames(opts.synced ?? ["nhl:1"]);
@@ -36,7 +38,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("triggers", () => {
   const goalEv = (sport: string, label: string, delta: number): EventPayload =>
-    ({ type: "goal", sport, league: "x", scoring: { label, delta, assists: [], home_score: 0, away_score: 0 }, game: mk(), natural_text: "", event_id: "e", emitted_at: 0, delay_s: 0 }) as unknown as EventPayload;
+    ({ type: "goal", sport, league: "x", scoring: { label, delta, assists: [], home_score: 0, away_score: 0 }, game: mk(), natural_text: "", event_id: "e", emitted_at: 0, delay_s: 0 });
   const ctx = { favorites: new Set(["nhl:MIN"]) };
 
   it("labels and basketball deltas map to the right triggers", () => {
@@ -51,7 +53,7 @@ describe("triggers", () => {
   });
 
   it("win only matches when a favourite team won", () => {
-    const end = (winner: string) => ({ type: "game_end", league: "nhl", winner }) as unknown as EventPayload;
+    const end = (winner: string): EventPayload => ({ ...baseEvent(), type: "game_end", league: "nhl", winner });
     expect(matchesAny(["win"], end("MIN"), ctx)).toBe(true);
     expect(matchesAny(["win"], end("CBJ"), ctx)).toBe(false);
     expect(matchesAny(["win"], end("tie"), ctx)).toBe(false);
@@ -59,7 +61,7 @@ describe("triggers", () => {
   });
 
   it("a manual press of 'win' fires even without a favourite", () => {
-    const ev = { type: "game_end", league: "nhl", winner: "CBJ", manual: true, trigger: "win" } as unknown as EventPayload;
+    const ev: EventPayload = { ...baseEvent(), type: "game_end", league: "nhl", winner: "CBJ", manual: true, trigger: "win" };
     expect(matchesAny(["win"], ev, { favorites: new Set() })).toBe(true);
   });
 

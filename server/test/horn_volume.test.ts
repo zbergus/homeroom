@@ -7,6 +7,12 @@ import { HornVolume } from "../src/outputs/horn_volume.js";
 import { Store } from "../src/store.js";
 import type { EventPayload, Game, Team } from "../src/types.js";
 
+/** body of a Home Assistant media_player.volume_set call, as the fake HA server receives it */
+interface VolumeSet {
+  entity_id?: string;
+  volume_level?: number;
+}
+
 /** A throw-away stand-in for Home Assistant's REST API. Never talks to anything real. */
 function mockHa(token: string) {
   const players: Record<string, { state: string; volume?: number }> = {
@@ -14,14 +20,14 @@ function mockHa(token: string) {
     "media_player.off": { state: "off" },
     "media_player.bad": { state: "idle", volume: 0.5 },
   };
-  const calls: { method: string; url: string; body?: any; auth?: string }[] = [];
+  const calls: { method: string; url: string; body: VolumeSet; auth?: string }[] = [];
   let failSet = false;
   let playingFor = 0; // GETs after a volume_set that still report "playing"
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
-      const body = raw ? JSON.parse(raw) : undefined;
+      const body: VolumeSet = raw ? JSON.parse(raw) : {};
       calls.push({ method: req.method!, url: req.url!, body, auth: req.headers.authorization });
       if (req.headers.authorization !== `Bearer ${token}`) return void res.writeHead(401).end();
       const m = /^\/api\/states\/(.+)$/.exec(req.url!);
@@ -32,8 +38,9 @@ function mockHa(token: string) {
         return void res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ state, attributes: p.volume === undefined ? {} : { volume_level: p.volume } }));
       }
       if (req.method === "POST" && req.url === "/api/services/media_player/volume_set") {
-        if (failSet || body.entity_id === "media_player.bad") return void res.writeHead(500).end("{}");
-        players[body.entity_id].volume = body.volume_level;
+        const target = players[body.entity_id ?? ""];
+        if (failSet || body.entity_id === "media_player.bad" || !target) return void res.writeHead(500).end("{}");
+        target.volume = body.volume_level;
         if (body.volume_level !== 0.3) playingFor = 2;
         return void res.writeHead(200, { "content-type": "application/json" }).end("[]");
       }

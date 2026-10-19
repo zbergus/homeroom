@@ -48,7 +48,7 @@ export const leagueById = (id: string): LeagueDef => {
 };
 
 const SUFFIX = ["th", "st", "nd", "rd"];
-export function ordinal(n: number): string {
+function ordinal(n: number): string {
   const v = n % 100;
   return n + (SUFFIX[(v - 20) % 10] || SUFFIX[v] || SUFFIX[0]);
 }
@@ -70,11 +70,3 @@ export function periodLabel(league: LeagueDef, n: number): string {
 
 /** A hockey shootout (period 5+) has no game clock: ESPN and the NHL feed both report a meaningless 0:00. */
 export const isShootout = (league: LeagueDef, period: number): boolean => league.sport === "hockey" && period >= 5;
-
-/** Short form for scoreboards: "2nd", "OT". */
-export function periodShort(league: LeagueDef, n: number): string {
-  if (league.sport === "hockey" && n === 4) return "OT";
-  if (league.sport === "hockey" && n === 5) return "SO";
-  if ((league.sport === "football" || league.sport === "basketball") && n >= 5) return n === 5 ? "OT" : `${n - 4}OT`;
-  return n > 0 ? ordinal(n) : "";
-}

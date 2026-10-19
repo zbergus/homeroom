@@ -1,6 +1,6 @@
 export type Rgb = { r: number; g: number; b: number };
 
-export interface TeamColors {
+interface TeamColors {
   primary_color_rgb: Rgb;
   secondary_color_rgb: Rgb;
   alternate_color_rgb: Rgb;
@@ -103,7 +103,7 @@ export interface Incident {
 }
 
 /** Skater situation from the NHL feed. `advantage` is the side on the power play (null = even or an empty net). */
-export interface Situation {
+interface Situation {
   advantage: "home" | "away" | null;
   home_skaters: number;
   away_skaters: number;

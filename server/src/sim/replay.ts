@@ -12,13 +12,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { leagueById, periodSeconds, type LeagueDef } from "../leagues.js";
+import type { Raw } from "../providers/raw.js";
 
-type J = any;
 
 /** Virtual time starts this long before the game's first recorded event, so the "pre" state and game_start are visible. */
 export const LEAD_MS = 10 * 60_000;
 
-export interface Meta {
+interface Meta {
   league: string;
   espn_id: string;
   date: string;
@@ -34,7 +34,7 @@ export interface Marker {
   v: number;
 }
 
-export interface Snap {
+interface Snap {
   state: "pre" | "in" | "post";
   period: number;
   /** seconds left on a count-down clock (hockey/basketball/football), or elapsed seconds for soccer */
@@ -93,7 +93,7 @@ class PlayTimeline implements Timeline {
   readonly end: number;
   private finalScore: { home: number; away: number };
 
-  constructor(private league: LeagueDef, plays: J[], finalScore: { home: number; away: number }) {
+  constructor(private league: LeagueDef, plays: Raw[], finalScore: { home: number; away: number }) {
     this.finalScore = finalScore;
     let carry = { home: 0, away: 0 };
     // ESPN lists plays in game order but some wallclocks run backwards by seconds (a basket logged late), which would make
@@ -183,9 +183,9 @@ class PlayTimeline implements Timeline {
 class SoccerTimeline implements Timeline {
   readonly first: number;
   readonly end: number;
-  private ht: number;
-  private s2: number;
-  constructor(keyEvents: J[], private finalScore: { home: number; away: number }, private goalsAt: (w: number) => { home: number; away: number }) {
+  readonly ht: number;
+  readonly s2: number;
+  constructor(keyEvents: Raw[], private finalScore: { home: number; away: number }, private goalsAt: (w: number) => { home: number; away: number }) {
     const wall = (re: RegExp) => keyEvents.filter((k) => re.test(k.type?.text ?? "") && k.wallclock).map((k) => Date.parse(k.wallclock))[0];
     this.first = wall(/^Kickoff$/i) ?? Date.parse(keyEvents[0]?.wallclock);
     this.ht = wall(/^Halftime$/i) ?? this.first + 2700e3;
@@ -220,16 +220,16 @@ export class ReplayGame {
   readonly id: string;
   readonly meta: Meta;
   readonly origin: number;
-  private ev: J;
-  private sum: J;
-  private nhlScore?: J;
-  private nhlPbp?: J;
+  private ev: Raw;
+  private sum: Raw;
+  private nhlScore?: Raw;
+  private nhlPbp?: Raw;
   private tl: Timeline;
   private playWall = new Map<string, number>();
-  private details: { d: J; w: number }[] = [];
+  private details: { d: Raw; w: number }[] = [];
   private nhlPlayWall: number[] = [];
   private nhlGoalWall: number[] = [];
-  private files = new Map<string, J>();
+  private files = new Map<string, Raw>();
   private homeId = "";
   private awayId = "";
   readonly recordedDay: string;
@@ -237,7 +237,7 @@ export class ReplayGame {
   private phantom?: { startW: number; endW: number; side: "home" | "away" };
 
   constructor(readonly dir: string) {
-    const rd = (f: string): J => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+    const rd = (f: string): Raw => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
     this.meta = rd("meta.json");
     this.league = leagueById(this.meta.league);
     this.id = `${this.league.id}:${this.meta.espn_id}`;
@@ -249,19 +249,19 @@ export class ReplayGame {
       this.nhlScore = fs.existsSync(path.join(dir, "nhl-score-game.json")) ? rd("nhl-score-game.json") : undefined;
     }
     const comp = this.ev.competitions[0];
-    const home = comp.competitors.find((c: J) => c.homeAway === "home");
-    const away = comp.competitors.find((c: J) => c.homeAway === "away");
+    const home = comp.competitors.find((c: Raw) => c.homeAway === "home");
+    const away = comp.competitors.find((c: Raw) => c.homeAway === "away");
     this.homeId = String(home.team.id);
     this.awayId = String(away.team.id);
     const finalScore = { home: Number(home.score) || 0, away: Number(away.score) || 0 };
     this.recordedDay = this.meta.date;
 
     // wall-clock lookup for every play we have an id for
-    const allPlays: J[] = [...(this.sum.plays ?? []), ...(this.sum.drives?.previous ?? []).flatMap((d: J) => d.plays ?? [])];
+    const allPlays: Raw[] = [...(this.sum.plays ?? []), ...(this.sum.drives?.previous ?? []).flatMap((d: Raw) => d.plays ?? [])];
     for (const p of allPlays) if (p.id && p.wallclock) this.playWall.set(String(p.id), Date.parse(p.wallclock));
 
     if (this.league.sport === "soccer") {
-      const ke: J[] = this.sum.keyEvents ?? [];
+      const ke: Raw[] = this.sum.keyEvents ?? [];
       // pair each scoreboard detail with its key event (same clock second + kind) to learn its wall-clock time
       const used = new Set<number>();
       const kickoff = Date.parse(ke.find((k) => /^Kickoff$/i.test(k.type?.text))?.wallclock);
@@ -282,14 +282,14 @@ export class ReplayGame {
       const goalsAt = (w: number) => this.soccerScore(w);
       this.tl = new SoccerTimeline(ke, finalScore, goalsAt);
     } else {
-      const plays = this.league.sport === "football" ? (this.sum.drives?.previous ?? []).flatMap((d: J) => d.plays ?? []) : this.sum.plays ?? [];
+      const plays = this.league.sport === "football" ? (this.sum.drives?.previous ?? []).flatMap((d: Raw) => d.plays ?? []) : this.sum.plays ?? [];
       this.tl = new PlayTimeline(this.league, plays, finalScore);
     }
     this.origin = this.tl.first - LEAD_MS;
 
     if (this.nhlPbp && this.tl instanceof PlayTimeline) {
-      this.nhlPlayWall = (this.nhlPbp.plays ?? []).map((p: J, i: number, all: J[]) => this.nhlWall(p, i, all));
-      this.nhlGoalWall = (this.nhlScore?.goals ?? []).map((g: J) => this.nhlGoalWallClock(g));
+      this.nhlPlayWall = (this.nhlPbp.plays ?? []).map((p: Raw, i: number, all: Raw[]) => this.nhlWall(p, i, all));
+      this.nhlGoalWall = (this.nhlScore?.goals ?? []).map((g: Raw) => this.nhlGoalWallClock(g));
     }
   }
 
@@ -311,7 +311,7 @@ export class ReplayGame {
   get awayTeamId(): string { return this.awayId; }
   /** ESPN team ids of this game */
   teamIds(): string[] { return [this.homeId, this.awayId]; }
-  file(name: string): J | undefined { return this.files.get(name); }
+  file(name: string): Raw | undefined { return this.files.get(name); }
   get hasNhl(): boolean { return !!this.nhlPbp; }
   get nhlId(): number | undefined { return this.nhlPbp?.id; }
   /** virtual ms at which the recording ends */
@@ -336,7 +336,7 @@ export class ReplayGame {
   private markWall(type: RegExp, period: number): number | undefined {
     return this.nhlMarks().find((k) => k.period === period && type.test(k.type))?.w;
   }
-  private nhlWall(p: J, idx: number, all: J[]): number {
+  private nhlWall(p: Raw, idx: number, all: Raw[]): number {
     const per = Number(p.periodDescriptor?.number ?? 1);
     const key: string = p.typeDescKey;
     const marks = this.nhlMarks();
@@ -350,7 +350,7 @@ export class ReplayGame {
       const endW = this.markWall(/^Shootout End$/, per) ?? this.tl.end;
       const soMarks = marks.filter((k) => k.period >= 5 && k.scoring);
       if (key === "goal") {
-        const nth = all.slice(0, idx).filter((x: J) => x.typeDescKey === "goal" && Number(x.periodDescriptor?.number) >= 5).length;
+        const nth = all.slice(0, idx).filter((x: Raw) => x.typeDescKey === "goal" && Number(x.periodDescriptor?.number) >= 5).length;
         return soMarks[nth]?.w ?? start + (endW - start) / 2;
       }
       return start + (endW - start) * 0.5;
@@ -367,7 +367,7 @@ export class ReplayGame {
     const f = (el - (a.el as number)) / Math.max(1, (b.el as number) - (a.el as number));
     return Math.round(a.w + f * (b.w - a.w));
   }
-  private nhlGoalWallClock(g: J): number {
+  private nhlGoalWallClock(g: Raw): number {
     const per = Number(g.period ?? g.periodDescriptor?.number ?? 1);
     if (per >= 5) {
       const soMarks = this.nhlMarks().filter((k) => k.period >= 5 && k.scoring);
@@ -377,7 +377,7 @@ export class ReplayGame {
   }
 
   // ---- ESPN scoreboard event ----------------------------------------------------------------------------------------
-  private statusFor(s: Snap): J {
+  private statusFor(s: Snap): Raw {
     const L = this.league;
     const sport = L.sport;
     const type = (id: string, name: string, state: string, description: string, detail: string, completed = false) => ({ id, name, state, completed, description, detail, shortDetail: detail });
@@ -403,7 +403,7 @@ export class ReplayGame {
   }
 
   /** ESPN scoreboard event as of virtual time v. `startAtMs` = the (rebased) scheduled start to report. */
-  espnEvent(v: number, startAtMs: number): J {
+  espnEvent(v: number, startAtMs: number): Raw {
     const w = this.origin + v;
     const s = this.snapAt(w);
     const ev = structuredClone(this.ev);
@@ -433,17 +433,17 @@ export class ReplayGame {
   }
 
   /** ESPN summary as of virtual time v (plays/keyEvents/scoringPlays up to v; boxscore scaled by elapsed time). */
-  espnSummary(v: number): J {
+  espnSummary(v: number): Raw {
     const w = this.origin + v;
     const sum = structuredClone(this.sum);
     const s = this.snapAt(w);
-    const vis = (p: J) => {
+    const vis = (p: Raw) => {
       const t = p.wallclock ? Date.parse(p.wallclock) : this.playWall.get(String(p.id));
       return t !== undefined && t <= w;
     };
     if (sum.plays) sum.plays = sum.plays.filter(vis);
     if (sum.scoringPlays) sum.scoringPlays = sum.scoringPlays.filter(vis);
-    if (sum.drives) sum.drives.previous = sum.drives.previous.map((d: J) => ({ ...d, plays: (d.plays ?? []).filter(vis) })).filter((d: J) => d.plays.length);
+    if (sum.drives) sum.drives.previous = sum.drives.previous.map((d: Raw) => ({ ...d, plays: (d.plays ?? []).filter(vis) })).filter((d: Raw) => d.plays.length);
     if (sum.keyEvents) sum.keyEvents = sum.keyEvents.filter(vis);
     const f = s.state === "post" ? 1 : s.state === "pre" ? 0 : Math.min(1, Math.max(0, (w - this.tl.first) / Math.max(1, this.tl.end - this.tl.first)));
     if (f < 1) scaleBoxscore(sum.boxscore, f);
@@ -456,12 +456,12 @@ export class ReplayGame {
   }
 
   // ---- NHL feed -----------------------------------------------------------------------------------------------------
-  private nhlClock(s: Snap): J {
+  private nhlClock(s: Snap): Raw {
     if (s.state === "pre") return { timeRemaining: "20:00", secondsRemaining: 1200, running: false, inIntermission: false };
     if (s.intermission) return { timeRemaining: fmtClock2(s.breakLeftS ?? 0), secondsRemaining: Math.round(s.breakLeftS ?? 0), running: false, inIntermission: true };
     return { timeRemaining: fmtClock2(s.clockS ?? 0), secondsRemaining: Math.round(s.clockS ?? 0), running: s.running, inIntermission: false };
   }
-  private nhlPeriod(p: number): J {
+  private nhlPeriod(p: number): Raw {
     return { number: p, periodType: p <= 3 ? "REG" : p === 4 ? "OT" : "SO", maxRegulationPeriods: 3 };
   }
   private nhlState(s: Snap): string {
@@ -469,7 +469,7 @@ export class ReplayGame {
   }
 
   /** the score/now `games[]` entry as of v */
-  nhlScoreGame(v: number, startAtMs: number): J | undefined {
+  nhlScoreGame(v: number, startAtMs: number): Raw | undefined {
     if (!this.nhlScore) return undefined;
     const w = this.origin + v;
     const s = this.snapAt(w);
@@ -477,8 +477,8 @@ export class ReplayGame {
     g.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
     g.gameState = this.nhlState(s);
     if (s.state !== "post") {
-      g.goals = (g.goals ?? []).filter((_: J, i: number) => this.nhlGoalWall[i] <= w);
-      const reg = (g.goals as J[]).filter((x) => Number(x.period) <= 4);
+      g.goals = (g.goals ?? []).filter((_: Raw, i: number) => this.nhlGoalWall[i] <= w);
+      const reg = (g.goals as Raw[]).filter((x) => Number(x.period) <= 4);
       g.homeTeam.score = reg.filter((x) => x.teamAbbrev === g.homeTeam.abbrev).length;
       g.awayTeam.score = reg.filter((x) => x.teamAbbrev === g.awayTeam.abbrev).length;
       const ph = this.phantomSide(w);
@@ -496,18 +496,18 @@ export class ReplayGame {
   }
 
   /** gamecenter/<id>/play-by-play as of v */
-  nhlPbpAt(v: number, startAtMs: number): J | undefined {
+  nhlPbpAt(v: number, startAtMs: number): Raw | undefined {
     if (!this.nhlPbp) return undefined;
     const w = this.origin + v;
     const s = this.snapAt(w);
     const d = structuredClone(this.nhlPbp);
     d.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
     d.gameState = this.nhlState(s);
-    const all: J[] = d.plays;
-    d.plays = all.filter((_: J, i: number) => this.nhlPlayWall[i] <= w);
+    const all: Raw[] = d.plays;
+    d.plays = all.filter((_: Raw, i: number) => this.nhlPlayWall[i] <= w);
     if (s.state !== "post") {
       const homeId = d.homeTeam.id;
-      const regGoals = (d.plays as J[]).filter((p) => p.typeDescKey === "goal" && Number(p.periodDescriptor?.number) <= 4);
+      const regGoals = (d.plays as Raw[]).filter((p) => p.typeDescKey === "goal" && Number(p.periodDescriptor?.number) <= 4);
       d.homeTeam.score = regGoals.filter((p) => p.details?.eventOwnerTeamId === homeId).length;
       d.awayTeam.score = regGoals.length - d.homeTeam.score;
       const ph = this.phantomSide(w);
@@ -550,8 +550,9 @@ export class ReplayGame {
         if (d.scoringPlay && !d.shootout) out.push({ kind: "goal", label: `goal ${++g}`, v: V(w) });
         else if (d.yellowCard || d.redCard) out.push({ kind: "card", label: `card ${++c} (${d.redCard ? "red" : "yellow"})`, v: V(w) });
       }
-      const st = this.tl as SoccerTimeline;
-      out.push({ kind: "intermission", label: "intermission 1", v: V((st as any).ht) }, { kind: "resume", label: "resume 1", v: V((st as any).s2) });
+      if (this.tl instanceof SoccerTimeline) {
+        out.push({ kind: "intermission", label: "intermission 1", v: V(this.tl.ht) }, { kind: "resume", label: "resume 1", v: V(this.tl.s2) });
+      }
     }
     out.push({ kind: "final", label: "final", v: V(this.tl.end) });
     return out.sort((a, b) => a.v - b.v);
@@ -564,10 +565,10 @@ export class ReplayGame {
 }
 
 /** Scale count-like boxscore values by the fraction of the game played (percentages and averages are left alone). */
-export function scaleBoxscore(box: J, f: number): void {
+function scaleBoxscore(box: Raw, f: number): void {
   // anchored: "accuratePasses" must scale (it contains "rate"), "possessionPct" / "thirdDownEff" must not
   const keep = /(pct|percent|percentage|eff|avg|average|rate|ratio)$/i;
-  const scale = (s: J) => {
+  const scale = (s: Raw) => {
     if (Array.isArray(s.stats)) return s.stats.forEach(scale);
     if (!s || typeof s.displayValue !== "string" || keep.test(s.name ?? "")) return;
     const dv: string = s.displayValue;

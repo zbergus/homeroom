@@ -8,7 +8,7 @@ const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x
 const isWhite = (d: Device) => d.supports_color === false;
 
 /** Effects every chosen entity offers (intersection of capabilities.effect_list). */
-export function commonEffects(sel: Device[]): string[] {
+function commonEffects(sel: Device[]): string[] {
   if (sel.length === 0) return [];
   const lists = sel.map((d) => d.capabilities?.effect_list ?? []);
   return lists[0].filter((e) => lists.every((l) => l.includes(e)));

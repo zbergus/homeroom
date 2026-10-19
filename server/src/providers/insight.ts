@@ -1,25 +1,25 @@
 import { leagueById } from "../leagues.js";
 import type { FormGame, Game, Insight, LeaderRef, PlayerWatch, StatRow, TeamForm } from "../types.js";
 import { espnJson } from "./espn.js";
+import { optStr, type Raw, str, strArr } from "./raw.js";
 
-type J = any;
 
 // ---- team form (recent results) -------------------------------------------------------------------
 
 /** Last `max` completed games from ESPN's team schedule, oldest first. */
-export function parseSchedule(json: J, teamId: string, sport: string, max = 10): FormGame[] {
+export function parseSchedule(json: Raw, teamId: string, sport: string, max = 10): FormGame[] {
   const games: FormGame[] = [];
   for (const ev of json?.events ?? []) {
     const comp = ev.competitions?.[0];
     if (!comp?.status?.type?.completed) continue;
-    const me = comp.competitors?.find((c: J) => String(c.team?.id) === String(teamId));
-    const opp = comp.competitors?.find((c: J) => c !== me);
+    const me = comp.competitors?.find((c: Raw) => String(c.team?.id) === String(teamId));
+    const opp = comp.competitors?.find((c: Raw) => c !== me);
     const gf = Number(me?.score?.value ?? me?.score?.displayValue), ga = Number(opp?.score?.value ?? opp?.score?.displayValue);
     if (!me || !opp || !Number.isFinite(gf) || !Number.isFinite(ga)) continue;
     const overtime = /\b(OT|SO)\b/i.test(comp.status.type.detail ?? "");
     games.push({
       opp_abbr: String(opp.team?.abbreviation ?? "").toUpperCase(),
-      opp_logo: opp.team?.logos?.find((l: J) => l.rel?.includes("default"))?.href ?? opp.team?.logos?.[0]?.href,
+      opp_logo: optStr(opp.team?.logos?.find((l: Raw) => l.rel?.includes("default"))?.href ?? opp.team?.logos?.[0]?.href),
       venue: me.homeAway === "home" ? "H" : "A",
       gf,
       ga,
@@ -39,7 +39,7 @@ export function formSummary(games: FormGame[], sport: string): string {
 
 type Stat = { value: number; perGame?: number };
 /** name -> value for every stat in ESPN's team statistics (all categories). */
-export function parseTeamStats(json: J): Map<string, Stat> {
+export function parseTeamStats(json: Raw): Map<string, Stat> {
   const m = new Map<string, Stat>();
   for (const cat of json?.results?.stats?.categories ?? []) {
     for (const s of cat.stats ?? []) if (typeof s.value === "number") m.set(s.name, { value: s.value, perGame: typeof s.perGameValue === "number" ? s.perGameValue : undefined });
@@ -87,10 +87,11 @@ export function buildFormRows(sport: string, home: { games: FormGame[]; stats?: 
 const HOCKEY_TILES: [string, string][] = [["GOALS", "goals"], ["ASSISTS", "assists"], ["POINTS", "points"], ["SHOTS", "shotsTotal"]];
 
 /** Season tiles + points-per-game chart for a hockey skater from ESPN's athlete game log. */
-export function buildPlayerWatch(leader: LeaderRef, gamelog: J, teamAbbr: string): PlayerWatch | undefined {
-  const names: string[] = gamelog?.names ?? [];
+export function buildPlayerWatch(leader: LeaderRef, gamelog: Raw, teamAbbr: string): PlayerWatch | undefined {
+  const names = strArr(gamelog?.names);
   const idx = (n: string) => names.indexOf(n);
-  const totals: string[] | undefined = gamelog?.seasonTypes?.[0]?.summary?.stats?.[0]?.stats;
+  const totalsRaw = gamelog?.seasonTypes?.[0]?.summary?.stats?.[0]?.stats;
+  const totals = Array.isArray(totalsRaw) ? totalsRaw.map((t) => str(t)) : undefined;
   if (!names.length || !totals) return undefined;
   const tiles = HOCKEY_TILES.flatMap(([label, name]) => (idx(name) >= 0 && totals[idx(name)] !== undefined ? [{ label, value: String(totals[idx(name)]) }] : []));
   if (!tiles.length) return undefined;
@@ -121,10 +122,10 @@ export function buildPlayerWatch(leader: LeaderRef, gamelog: J, teamAbbr: string
 
 // ---- orchestration --------------------------------------------------------------------------------
 
-export interface InsightDeps {
-  teamSchedule: (league: string, teamId: string) => Promise<J>;
-  teamStats: (league: string, teamId: string) => Promise<J>;
-  gamelog: (league: string, athleteId: string) => Promise<J>;
+interface InsightDeps {
+  teamSchedule: (league: string, teamId: string) => Promise<Raw>;
+  teamStats: (league: string, teamId: string) => Promise<Raw>;
+  gamelog: (league: string, athleteId: string) => Promise<Raw>;
   now?: () => number;
 }
 

@@ -1,4 +1,4 @@
-export type Strength = "ev" | "pp" | "sh" | "en";
+type Strength = "ev" | "pp" | "sh" | "en";
 
 /** Normalise provider strings ("even-strength", "power-play", "Short Handed", "pp", ...) to ev | pp | sh | en. */
 export function normStrength(raw?: string, emptyNet = false): Strength | undefined {
@@ -31,7 +31,7 @@ export function strengthFromSituation(code: string | undefined, scorerIsHome: bo
   return "ev";
 }
 
-export interface ParsedSituation {
+interface ParsedSituation {
   home_skaters: number;
   away_skaters: number;
   home_goalie: boolean;

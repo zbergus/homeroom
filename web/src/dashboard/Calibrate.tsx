@@ -5,6 +5,7 @@ import { useGameClock } from "../lib/clock";
 import { Button, Field, inputCls, Notice } from "../components/ui";
 import { fmtDelay, snapDelay } from "./DelayControl";
 import { usePoll } from "./usePoll";
+import { errMsg } from "../lib/errors";
 
 const gameName = (g: Game) => `${g.away.abbr} @ ${g.home.abbr} (${g.league.toUpperCase()})`;
 
@@ -14,7 +15,7 @@ function friendly(e: unknown): string {
     if (e.status === 404) return "The server no longer knows that game. Refresh the list and pick another.";
     if (e.status === 400) return "Enter the TV period as a number (1, 2, 3...) and the clock as minutes:seconds, like 12:34.";
   }
-  return `Calibration failed: ${(e as Error).message}`;
+  return `Calibration failed: ${errMsg(e)}`;
 }
 
 /** Type the clock you see on the TV; compare with the live feed to estimate the stream delay. */
