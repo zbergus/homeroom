@@ -22,6 +22,8 @@ open http://localhost:8080
 ```
 Data lives in `./data` (SQLite) and `./media` (goal horns). Both are bind mounts, so they survive rebuilds.
 
+**Deploying to a home server (Arcane):** CI publishes `ghcr.io/zbergus/homeroom`; paste [`deploy/docker-compose.yml`](deploy/docker-compose.yml) into an Arcane project. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ## Connect Home Assistant
 
 Full guide: [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md). In short:

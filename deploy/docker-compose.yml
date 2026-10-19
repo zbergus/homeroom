@@ -1,0 +1,33 @@
+# Homeroom for Arcane: paste this file and a .env made from deploy/.env.example into an Arcane project.
+# Nothing else is needed and nothing is built on the host: CI publishes the image to GHCR (docs/DEPLOYMENT.md).
+services:
+  homeroom:
+    image: ghcr.io/zbergus/homeroom:${HOMEROOM_TAG:-latest}
+    container_name: homeroom
+    restart: unless-stopped
+    ports:
+      # Home Assistant, the speakers (goal horn URLs) and the TVs must reach this: LAN only, never the internet
+      - "${HOMEROOM_PUBLISH_ADDR:-0.0.0.0}:${HOMEROOM_PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # the address speakers and Home Assistant use to reach this container; goal horn links are built from it
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL to the LAN address of this service, e.g. http://192.168.1.10:8080}
+      PUSHER_APP_KEY: ${PUSHER_APP_KEY:-homeroom-local-key}
+      PUSHER_APP_SECRET: ${PUSHER_APP_SECRET:?set PUSHER_APP_SECRET to a long random value}
+      # guards every mutating /api call and GET /api/hook/* (Bearer token); recommended
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # when set, only this key may link a Home Assistant install; recommended
+      HOMEROOM_API_KEY: ${HOMEROOM_API_KEY:-}
+      # browser origins besides this server that may call the API (host[:port], comma separated); usually empty
+      HOMEROOM_ALLOWED_ORIGINS: ${HOMEROOM_ALLOWED_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+    volumes:
+      # SQLite database and settings. The image runs as uid/gid 1000: chown these directories to it (docs/DEPLOYMENT.md)
+      - ${HOMEROOM_DATA_DIR:-/mnt/apps/homeroom/data}:/data
+      # goal horns: media/horns/<league>/<ABBR>.mp3 (also uploadable in the UI)
+      - ${HOMEROOM_MEDIA_DIR:-/mnt/apps/homeroom/media}:/media
+    # nothing in the app needs privileges: it listens on 8080 and writes only to the two volumes above
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
