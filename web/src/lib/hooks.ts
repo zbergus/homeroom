@@ -33,7 +33,7 @@ export function useKiosk() {
 /** Debounced callback; always calls the latest fn. */
 export function useDebouncedCallback<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   const f = useRef(fn); f.current = fn;
-  const t = useRef<ReturnType<typeof setTimeout>>();
+  const t = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(t.current), []);
   return (...a: A) => { clearTimeout(t.current); t.current = setTimeout(() => f.current(...a), ms); };
 }
