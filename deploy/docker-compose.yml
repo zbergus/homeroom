@@ -1,10 +1,27 @@
 # Homeroom for Arcane: paste this file and a .env made from deploy/.env.example into an Arcane project.
 # Nothing else is needed and nothing is built on the host: CI publishes the image to GHCR (docs/DEPLOYMENT.md).
 services:
+  # Docker creates missing bind-mount directories as root, but the app runs as uid 1000: hand the two volumes to it first.
+  # Runs once per deploy and exits; the only capability it has is chown.
+  init-perms:
+    image: ghcr.io/zbergus/homeroom:${HOMEROOM_TAG:-latest}
+    user: "0:0"
+    command: ["chown", "-R", "1000:1000", "/data", "/media"]
+    volumes:
+      - ${HOMEROOM_DATA_DIR:-/mnt/apps/homeroom/data}:/data
+      - ${HOMEROOM_MEDIA_DIR:-/mnt/apps/homeroom/media}:/media
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
   homeroom:
     image: ghcr.io/zbergus/homeroom:${HOMEROOM_TAG:-latest}
     container_name: homeroom
     restart: unless-stopped
+    depends_on:
+      init-perms:
+        condition: service_completed_successfully
     ports:
       # Home Assistant, the speakers (goal horn URLs) and the TVs must reach this: LAN only, never the internet
       - "${HOMEROOM_PUBLISH_ADDR:-0.0.0.0}:${HOMEROOM_PORT:-8080}:8080"
