@@ -16,7 +16,7 @@
     "lint": "cd .. && server/node_modules/.bin/biome lint"
   },
   "dependencies": {
-    "@fastify/formbody": "^8.0.2",
+    "@fastify/formbody": "^9.0.1",
     "@fastify/multipart": "^9.0.0",
     "@fastify/static": "^10.1.6",
     "fastify": "^5.0.0",
