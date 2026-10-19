@@ -14,7 +14,8 @@ server/   Node 22 + TypeScript (Fastify, ws, node:sqlite)   the engine, APIs, Pu
 web/      Vite + React + Tailwind                           dashboard + TV views (dark mode only)
 ha/       patch_integration.py                              generates a local copy of the upstream HA integration
 scripts/  e2e_pysher.py, fetch-horns.mjs, make-default-horn.sh
-docs/     ARCHITECTURE / HOME_ASSISTANT / DEVELOPMENT, research/ (reference screenshots, see its README)
+docs/     ARCHITECTURE / HOME_ASSISTANT / DEVELOPMENT / DEPLOYMENT, research/ (reference screenshots, see its README)
+deploy/   Arcane compose + .env template (pulls the image CI publishes to GHCR; .github/workflows/ci.yml builds it)
 data/ media/   runtime volumes (SQLite, goal horns); git-ignored contents
 ```
 Key server files: `engine/engine.ts` (state, diff, events, delay), `engine/poller.ts` (adaptive polling), `engine/triggers.ts`, `outputs/dispatch.ts` (the one gate before any automation output), `outputs/pusher.ts` (Pusher protocol server), `outputs/lights.ts`, `providers/{espn,nhl,boxscore,insight}.ts`, `http.ts` (all routes), `app.ts` (wiring; tests build the whole app with it), `store.ts` (SQLite + settings).
