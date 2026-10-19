@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { EventPayload, Game } from "../types";
 import { useEvents, useLive } from "../lib/live";
-import { useKiosk, useNow, useOrientation } from "../lib/hooks";
+import { useKiosk, useNow, useOrientation, useQueryParam } from "../lib/hooks";
+import { useOnlyMine } from "../lib/mine";
 import { countdown, diagonal, statusText, sortGames, startMs, timeLabel } from "../lib/format";
 import { ConnDot, TeamBadge } from "../components/Kiosk";
 
@@ -71,7 +72,8 @@ export default function Grid() {
   const params = new URLSearchParams(window.location.search);
   const perPage = Math.min(12, Math.max(1, Number(params.get("max")) || 8));
   const rotateMs = Math.max(4, Number(params.get("rotate")) || 12) * 1000;
-  const sorted = sortGames([...games.values()]) as Game[];
+  const mine = useOnlyMine(useQueryParam("only")); // undefined: no filter; null: filter wanted but favourites not loaded yet
+  const sorted = (sortGames([...games.values()]) as Game[]).filter((g) => mine === undefined || (mine !== null && mine(g)));
   const liveCount = sorted.filter((g) => g.status === "in").length;
   // Few live games: show them plus the next-up games on one page, no paging.
   // More live games than fit, or nothing live: page through the slate.
@@ -90,7 +92,7 @@ export default function Grid() {
   return (
     <div className="kiosk fixed inset-0 bg-ink-950" style={{ padding: "2vmin" }}>
       {list.length === 0 ? (
-        <div className="flex h-full items-center justify-center font-bold opacity-50" style={{ fontSize: "3vmin" }}>Waiting for games…</div>
+        <div className="flex h-full items-center justify-center font-bold opacity-50" style={{ fontSize: "3vmin" }}>{mine === undefined ? "Waiting for games…" : mine === null ? "" : "No games for your teams right now"}</div>
       ) : (
         <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, alignContent: "center", gap: "1.6vmin" }}>
           {list.map((g) => <Card key={g.id} game={g} now={now} pulse={!!pulse[g.id]} ratio={o === "portrait" ? 1.6 : 1.9} cols={cols} />)}

@@ -4,8 +4,9 @@ import { isMockUrl } from "../lib/live";
 
 const VIEWS = [
   { path: "/scoreboard?game=auto", name: "Scoreboard", desc: "Full-screen scoreboard for your synced game" },
-  { path: "/grid", name: "SportsGrid", desc: "Every game on one screen" },
-  { path: "/ticker", name: "Ticker", desc: "LED-style scrolling scores" },
+  { path: "/grid", name: "SportsGrid", desc: "Every game on one screen. Add ?only=mine to show only your teams and synced games." },
+  { path: "/grid?only=mine", name: "SportsGrid (my teams)", desc: "Only games for your favourite teams and synced games; follows changes you make here" },
+  { path: "/ticker", name: "Ticker", desc: "LED-style scrolling scores (add ?only=mine for your teams)" },
 ];
 
 export default function KioskLinks({ base }: { base: string }) {
@@ -18,7 +19,7 @@ export default function KioskLinks({ base }: { base: string }) {
   };
   return (
     <Card title="TV views" subtitle="Open on a TV browser or kiosk. Copy the URL for Fully Kiosk, a Chromecast tab, or a Pi.">
-      <ul className="grid gap-3 md:grid-cols-3">
+      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {VIEWS.map((v) => {
           const url = origin + v.path;
           return (

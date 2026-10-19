@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import type { Game, SyncState, Team } from "../types";
+import { useRef } from "react";
+import type { Game, GameLite, SyncState, Team } from "../types";
 import { useLive } from "../lib/live";
-import { api } from "../lib/api";
+import { isMine, useNextMine, useSync } from "../lib/mine";
 import { useKiosk, useNow, useOrientation, useQueryParam, useTicker } from "../lib/hooks";
 import { countdown, shortPeriod, startMs, timeLabel, whenLabel } from "../lib/format";
 import { resolveMatchup, type SideColors } from "../lib/colors";
@@ -24,7 +24,7 @@ const STEPS: Step[] = ["live", "countdown", "players", "form", "stats", "summary
 
 function pick(games: Game[], want: string, sync: SyncState | null | undefined, finalSeen: Map<string, number>, now: number): Game | undefined {
   if (want !== "auto") return games.find((g) => g.id === want);
-  const pool = sync ? games.filter((g) => (sync.effective ?? sync.games).includes(g.id)) : games;
+  const pool = !sync ? [] : games.filter((g) => (sync.effective ?? sync.games).includes(g.id));
   const rank = (g: Game) =>
     g.status === "in" ? (g.intermission ? 1 : 0)
     : g.status === "pre" ? 2
@@ -172,8 +172,8 @@ function SidePanelFill({ game, maxRows, size }: { game: Game; maxRows: number; s
   return <div className="flex min-h-0 flex-1 flex-col [&>aside]:flex-1"><SidePanel game={game} maxRows={maxRows} size={size} /></div>;
 }
 
-function IdleScreen({ games, now }: { games: Game[]; now: number }) {
-  const next = games.filter((g) => g.status === "pre").sort((a, b) => startMs(a) - startMs(b))[0];
+/** `next` is decided by the caller: in auto mode only my games count, never another league's slate. */
+function IdleScreen({ next, now, loading }: { next: GameLite | null | undefined; now: number; loading?: boolean }) {
   return (
     <div className="fade-in absolute inset-0 flex flex-col items-center justify-center text-center text-white" style={{ background: "radial-gradient(80% 80% at 50% 40%, #16203a, #07090f)", gap: U(2.5) }}>
       <div className="font-black tracking-[.3em] opacity-50" style={{ fontSize: U(3) }}>HOMEROOM</div>
@@ -189,7 +189,7 @@ function IdleScreen({ games, now }: { games: Game[]; now: number }) {
           <div className="opacity-70" style={{ fontSize: U(2.4) }}>{new Date(startMs(next)).toLocaleDateString([], { weekday: "long" })} {timeLabel(startMs(next))}</div>
         </>
       ) : (
-        <div className="opacity-70" style={{ fontSize: U(4) }}>No upcoming games</div>
+        !loading && <div className="opacity-70" style={{ fontSize: U(4) }}>No upcoming games for your teams</div>
       )}
     </div>
   );
@@ -201,18 +201,11 @@ export default function Scoreboard() {
   const forced = useQueryParam("screen") as Step | null; // debug: live|countdown|players|form|stats|summary
   const { games, conn } = useLive("scoreboard", want);
   const now = useNow(1000);
-  const [sync, setSync] = useState<SyncState | null>(null);
   const finalSeen = useRef(new Map<string, number>());
   const tick = useTicker(BREAK_ROTATE_MS);
 
-  useEffect(() => {
-    if (want !== "auto") return;
-    let dead = false;
-    const load = () => api.sync().then((s) => !dead && setSync(s)).catch(() => !dead && setSync(null));
-    load();
-    const i = setInterval(load, 60_000);
-    return () => { dead = true; clearInterval(i); };
-  }, [want]);
+  const sync = useSync(60_000);
+  const nextMine = useNextMine(sync, want === "auto");
 
   const all = [...games.values()];
   for (const g of all) if (g.status === "post" && !finalSeen.current.has(g.id)) finalSeen.current.set(g.id, Date.now());
@@ -225,7 +218,10 @@ export default function Scoreboard() {
 
   let body: React.ReactNode;
   if (!game || finalExpired || (game.status === "pre" && want === "auto" && startMs(game) - now > PRE_WINDOW_MS)) {
-    body = <IdleScreen games={all} now={now} />;
+    // auto: soonest of my games (live feed first, else the week's schedule); a named game keeps the old "soonest anywhere"
+    const livePre = (want === "auto" ? all.filter((g) => g.status === "pre" && sync && isMine(g, sync)) : all.filter((g) => g.status === "pre")).sort((a, b) => startMs(a) - startMs(b))[0];
+    const next = want === "auto" ? [livePre, nextMine].filter((g): g is GameLite => !!g).sort((a, b) => startMs(a) - startMs(b))[0] : livePre;
+    body = <IdleScreen next={next} now={now} loading={want === "auto" && !sync} />;
   } else {
     const steps = stepsFor(game);
     const step: Step = forced && STEPS.includes(forced) ? forced : steps[tick % steps.length];

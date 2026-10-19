@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { EventPayload, Game } from "../types";
 import { useEvents, useLive } from "../lib/live";
-import { useKiosk, useNow } from "../lib/hooks";
+import { useKiosk, useNow, useQueryParam } from "../lib/hooks";
+import { useOnlyMine } from "../lib/mine";
 import { sortGames, statusText, startMs, timeLabel, countdown } from "../lib/format";
 import { ConnDot } from "../components/Kiosk";
 import { GameBars } from "../components/GameBars";
@@ -59,7 +60,8 @@ export default function Ticker() {
     setTimeout(() => setFlash((f) => { const n = { ...f }; delete n[id]; return n; }), 8000);
   }, []));
 
-  const list = sortGames([...games.values()]) as Game[];
+  const mine = useOnlyMine(useQueryParam("only"));
+  const list = (sortGames([...games.values()]) as Game[]).filter((g) => mine === undefined || (mine !== null && mine(g)));
   return (
     <div className="kiosk fixed inset-0 flex items-center bg-black">
       <div className="sr-only" role="marquee" aria-live="off">{list.map((g) => srText(g, now)).join(". ")}</div>
