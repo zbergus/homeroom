@@ -12,3 +12,6 @@ ha/custom_components
 docs/research/app-*.png
 docs/research/instagram.png
 docs/research/ref-*
+
+# agent worktrees (a worktree inside the repo carries its own biome.json: remove it before running `npm run lint` in the main checkout)
+.claude/worktrees/
