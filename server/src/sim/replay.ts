@@ -1,0 +1,585 @@
+/**
+ * Replay model: turns one recorded (finished) game into "what the providers would have returned at virtual time V".
+ *
+ * Nothing here is imported by production code. It reads fixtures written by scripts/record-game.mjs
+ * (server/test/fixtures/replay/<league>-<espnId>/) and reuses the real payload shapes, so the production parsers
+ * (`normalizeEvent`, `parseSummary`, `normalizeNhl`, `parsePbp`) run unchanged against the reconstructed responses.
+ *
+ * Fidelity (details in docs/notes/replay-research.md): score, period, intermissions, goals/cards and the NHL skater situation are
+ * exact at play granularity; the running clock is interpolated between plays; boxscore stats are the final numbers scaled by
+ * elapsed time (approximation); team schedule/stats are the recorded (final-day) ones.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { leagueById, periodSeconds, type LeagueDef } from "../leagues.js";
+
+type J = any;
+
+/** Virtual time starts this long before the game's first recorded event, so the "pre" state and game_start are visible. */
+export const LEAD_MS = 10 * 60_000;
+
+export interface Meta {
+  league: string;
+  espn_id: string;
+  date: string;
+  title: string;
+  start_time: string;
+  nhl_id?: string;
+}
+
+export interface Marker {
+  kind: "start" | "goal" | "intermission" | "resume" | "card" | "final";
+  label: string;
+  /** virtual ms since sim origin */
+  v: number;
+}
+
+export interface Snap {
+  state: "pre" | "in" | "post";
+  period: number;
+  /** seconds left on a count-down clock (hockey/basketball/football), or elapsed seconds for soccer */
+  clockS?: number;
+  running: boolean;
+  intermission: boolean;
+  /** seconds until the next period starts, while intermission */
+  breakLeftS?: number;
+  halftime: boolean;
+  half?: "Top" | "Bottom";
+  home: number;
+  away: number;
+}
+
+interface Mark {
+  w: number;
+  period: number;
+  /** seconds remaining on the display clock (count-down sports) */
+  rem?: number;
+  /** hockey: seconds elapsed in the period */
+  el?: number;
+  home: number;
+  away: number;
+  type: string;
+  scoring: boolean;
+  half?: "Top" | "Bottom";
+}
+
+interface Timeline {
+  first: number;
+  end: number;
+  snap(w: number): Snap;
+  /** cumulative score deltas per period for the given team side, for periods that have started by `w` */
+  linescores(w: number): { home: number[]; away: number[] };
+}
+
+const mmss = (s: unknown): number => {
+  const m = /^(\d+):(\d{2})$/.exec(String(s ?? "").trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+};
+const fmtClock = (sec: number): string => {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+const fmtClock2 = (sec: number): string => {
+  const s = Math.max(0, Math.round(sec));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+const ord = (n: number) => `${n}${["th", "st", "nd", "rd"][(n % 100 >= 11 && n % 100 <= 13) || n % 10 > 3 ? 0 : n % 10]}`;
+
+// ---- play-based timeline (hockey, basketball, football, baseball) ---------------------------------------------------
+
+class PlayTimeline implements Timeline {
+  readonly marks: Mark[] = [];
+  readonly first: number;
+  readonly end: number;
+  private finalScore: { home: number; away: number };
+
+  constructor(private league: LeagueDef, plays: J[], finalScore: { home: number; away: number }) {
+    this.finalScore = finalScore;
+    let carry = { home: 0, away: 0 };
+    // ESPN lists plays in game order but some wallclocks run backwards by seconds (a basket logged late), which would make
+    // the score regress; keep the game order and clamp the wall clock to be non-decreasing instead of sorting by it.
+    let lastW = 0;
+    const sorted = plays
+      .filter((p) => p.wallclock && Number.isFinite(Date.parse(p.wallclock)))
+      .map((p) => ({ p, w: (lastW = Math.max(lastW, Date.parse(p.wallclock))) }));
+    for (const { p, w } of sorted) {
+      const period = Number(p.period?.number ?? 0);
+      let rem: number | undefined;
+      let el: number | undefined;
+      if (league.sport === "hockey") {
+        el = mmss(p.clock?.displayValue);
+        if (!Number.isFinite(el)) el = 0;
+        rem = period >= 5 ? 0 : Math.max(0, periodSeconds(league, period) - el);
+      } else if (league.sport === "basketball" || league.sport === "football") {
+        const v = typeof p.clock?.value === "number" ? p.clock.value : mmss(p.clock?.displayValue);
+        rem = Number.isFinite(v) ? v : undefined;
+      }
+      // ESPN's play log has the odd score glitch (an NBA game lists 106-93 then 103-93); a scoreboard never goes backwards on its
+      // own, so keep scores monotonic here and use the explicit phantom-goal scenario to test corrections.
+      let home = Math.max(carry.home, Number(p.homeScore ?? carry.home));
+      let away = Math.max(carry.away, Number(p.awayScore ?? carry.away));
+      // a hockey shootout's own tally (1-0) is not the game score; the real score only changes when the SO ends
+      if (league.sport === "hockey" && period >= 5) ({ home, away } = carry);
+      carry = { home, away };
+      const half = p.period?.type === "Top" || p.period?.type === "Bottom" ? (p.period.type as "Top" | "Bottom") : undefined;
+      this.marks.push({ w, period, rem, el, home, away, type: String(p.type?.text ?? ""), scoring: !!p.scoringPlay, half });
+    }
+    this.first = this.marks[0]?.w ?? 0;
+    this.end = this.marks[this.marks.length - 1]?.w ?? 0;
+  }
+
+  snap(w: number): Snap {
+    const m = this.marks;
+    if (!m.length || w < this.first) return { state: "pre", period: 0, running: false, intermission: false, halftime: false, home: 0, away: 0 };
+    if (w >= this.end) {
+      const last = m[m.length - 1];
+      return { state: "post", period: last.period, clockS: 0, running: false, intermission: false, halftime: false, ...this.finalScore };
+    }
+    let i = 0;
+    // marks are sorted; linear scan from the end is plenty fast for a few hundred plays
+    for (let k = m.length - 1; k >= 0; k--) if (m[k].w <= w) { i = k; break; }
+    const cur = m[i];
+    const nxt = m[i + 1];
+    const snap: Snap = { state: "in", period: cur.period, clockS: cur.rem, running: false, intermission: false, halftime: false, home: cur.home, away: cur.away, half: cur.half };
+    if (nxt && nxt.period > cur.period) {
+      // between the last play of a period and the first of the next one
+      snap.intermission = this.league.sport !== "baseball";
+      snap.clockS = this.league.sport === "baseball" ? undefined : 0;
+      snap.breakLeftS = Math.max(0, (nxt.w - w) / 1000);
+      snap.halftime = snap.intermission && this.league.regulation >= 4 && cur.period === this.league.regulation / 2;
+    } else if (cur.rem !== undefined && nxt && nxt.period === cur.period && nxt.rem !== undefined) {
+      const dt = (w - cur.w) / 1000;
+      const left = cur.rem - dt;
+      snap.running = left > nxt.rem;
+      snap.clockS = Math.max(nxt.rem, left);
+    }
+    return snap;
+  }
+
+  linescores(w: number): { home: number[]; away: number[] } {
+    const last = new Map<number, { home: number; away: number }>();
+    let maxP = 0;
+    for (const k of this.marks) {
+      if (k.w > w) break;
+      if (this.league.sport === "hockey" && k.period >= 5) continue;
+      last.set(k.period, { home: k.home, away: k.away });
+      maxP = Math.max(maxP, k.period);
+    }
+    const home: number[] = [], away: number[] = [];
+    let ph = 0, pa = 0;
+    for (let p = 1; p <= maxP; p++) {
+      const l = last.get(p) ?? { home: ph, away: pa };
+      home.push(l.home - ph);
+      away.push(l.away - pa);
+      ph = l.home;
+      pa = l.away;
+    }
+    return { home, away };
+  }
+}
+
+// ---- soccer timeline (keyEvents with wallclock) ---------------------------------------------------------------------
+
+class SoccerTimeline implements Timeline {
+  readonly first: number;
+  readonly end: number;
+  private ht: number;
+  private s2: number;
+  constructor(keyEvents: J[], private finalScore: { home: number; away: number }, private goalsAt: (w: number) => { home: number; away: number }) {
+    const wall = (re: RegExp) => keyEvents.filter((k) => re.test(k.type?.text ?? "") && k.wallclock).map((k) => Date.parse(k.wallclock))[0];
+    this.first = wall(/^Kickoff$/i) ?? Date.parse(keyEvents[0]?.wallclock);
+    this.ht = wall(/^Halftime$/i) ?? this.first + 2700e3;
+    this.s2 = wall(/^Start 2nd Half$/i) ?? this.ht + 900e3;
+    const ends = keyEvents.filter((k) => /^End (Regular Time|Match)|Full Time/i.test(k.type?.text ?? "") && k.wallclock).map((k) => Date.parse(k.wallclock));
+    this.end = ends.length ? Math.max(...ends) : this.s2 + 3000e3;
+  }
+  snap(w: number): Snap {
+    const zero = { running: false, intermission: false, halftime: false };
+    if (w < this.first) return { state: "pre", period: 0, home: 0, away: 0, ...zero };
+    if (w >= this.end) return { state: "post", period: 2, clockS: 5400, ...zero, ...this.finalScore };
+    const sc = this.goalsAt(w);
+    if (w < this.ht) return { state: "in", period: 1, clockS: (w - this.first) / 1000, running: true, intermission: false, halftime: false, ...sc };
+    if (w < this.s2) return { state: "in", period: 1, clockS: 2700, running: false, intermission: true, halftime: true, breakLeftS: (this.s2 - w) / 1000, ...sc };
+    return { state: "in", period: 2, clockS: 2700 + (w - this.s2) / 1000, running: true, intermission: false, halftime: false, ...sc };
+  }
+  /** ESPN prints "45'+3'" / "90'+5'" in stoppage time */
+  static display(sec: number, period: number): string {
+    const limit = period === 1 ? 2700 : 5400;
+    if (sec >= limit) return `${limit / 60}'+${Math.ceil((sec - limit + 1) / 60)}'`;
+    return `${Math.floor(sec / 60) + 1}'`;
+  }
+  linescores(): { home: number[]; away: number[] } {
+    return { home: [], away: [] };
+  }
+}
+
+// ---- the game ---------------------------------------------------------------------------------------------------------
+
+export class ReplayGame {
+  readonly league: LeagueDef;
+  readonly id: string;
+  readonly meta: Meta;
+  readonly origin: number;
+  private ev: J;
+  private sum: J;
+  private nhlScore?: J;
+  private nhlPbp?: J;
+  private tl: Timeline;
+  private playWall = new Map<string, number>();
+  private details: { d: J; w: number }[] = [];
+  private nhlPlayWall: number[] = [];
+  private nhlGoalWall: number[] = [];
+  private files = new Map<string, J>();
+  private homeId = "";
+  private awayId = "";
+  readonly recordedDay: string;
+  /** scenario injection: a score that appears for a while and is then taken back (an overturned/reviewed goal) */
+  private phantom?: { startW: number; endW: number; side: "home" | "away" };
+
+  constructor(readonly dir: string) {
+    const rd = (f: string): J => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+    this.meta = rd("meta.json");
+    this.league = leagueById(this.meta.league);
+    this.id = `${this.league.id}:${this.meta.espn_id}`;
+    this.ev = rd("espn-event.json");
+    this.sum = rd("espn-summary.json");
+    for (const f of fs.readdirSync(dir)) if (/^(team-|gamelog-)/.test(f)) this.files.set(f, rd(f));
+    if (fs.existsSync(path.join(dir, "nhl-pbp.json"))) {
+      this.nhlPbp = rd("nhl-pbp.json");
+      this.nhlScore = fs.existsSync(path.join(dir, "nhl-score-game.json")) ? rd("nhl-score-game.json") : undefined;
+    }
+    const comp = this.ev.competitions[0];
+    const home = comp.competitors.find((c: J) => c.homeAway === "home");
+    const away = comp.competitors.find((c: J) => c.homeAway === "away");
+    this.homeId = String(home.team.id);
+    this.awayId = String(away.team.id);
+    const finalScore = { home: Number(home.score) || 0, away: Number(away.score) || 0 };
+    this.recordedDay = this.meta.date;
+
+    // wall-clock lookup for every play we have an id for
+    const allPlays: J[] = [...(this.sum.plays ?? []), ...(this.sum.drives?.previous ?? []).flatMap((d: J) => d.plays ?? [])];
+    for (const p of allPlays) if (p.id && p.wallclock) this.playWall.set(String(p.id), Date.parse(p.wallclock));
+
+    if (this.league.sport === "soccer") {
+      const ke: J[] = this.sum.keyEvents ?? [];
+      // pair each scoreboard detail with its key event (same clock second + kind) to learn its wall-clock time
+      const used = new Set<number>();
+      const kickoff = Date.parse(ke.find((k) => /^Kickoff$/i.test(k.type?.text))?.wallclock);
+      const s2 = Date.parse(ke.find((k) => /^Start 2nd Half$/i.test(k.type?.text))?.wallclock);
+      for (const d of comp.details ?? []) {
+        const idx = ke.findIndex((k, i) => !used.has(i) && k.wallclock && Number(k.clock?.value) === Number(d.clock?.value) && String(k.team?.id ?? "") === String(d.team?.id ?? "") && !!k.scoringPlay === !!d.scoringPlay);
+        let w: number;
+        if (idx >= 0) {
+          used.add(idx);
+          w = Date.parse(ke[idx].wallclock);
+        } else {
+          const sec = Number(d.clock?.value ?? 0);
+          w = sec <= 2700 + 600 && sec < 2700 ? kickoff + sec * 1000 : (Number.isFinite(s2) ? s2 : kickoff + 3600e3) + (sec - 2700) * 1000;
+        }
+        this.details.push({ d, w });
+      }
+      this.details.sort((a, b) => a.w - b.w);
+      const goalsAt = (w: number) => this.soccerScore(w);
+      this.tl = new SoccerTimeline(ke, finalScore, goalsAt);
+    } else {
+      const plays = this.league.sport === "football" ? (this.sum.drives?.previous ?? []).flatMap((d: J) => d.plays ?? []) : this.sum.plays ?? [];
+      this.tl = new PlayTimeline(this.league, plays, finalScore);
+    }
+    this.origin = this.tl.first - LEAD_MS;
+
+    if (this.nhlPbp && this.tl instanceof PlayTimeline) {
+      this.nhlPlayWall = (this.nhlPbp.plays ?? []).map((p: J, i: number, all: J[]) => this.nhlWall(p, i, all));
+      this.nhlGoalWall = (this.nhlScore?.goals ?? []).map((g: J) => this.nhlGoalWallClock(g));
+    }
+  }
+
+  /** Inject an overturned goal: `side` gets +1 from virtual second `atS` for `holdS` seconds, then it disappears. */
+  setPhantom(atS: number, side: "home" | "away", holdS: number): void {
+    this.phantom = { startW: this.origin + atS * 1000, endW: this.origin + (atS + holdS) * 1000, side };
+  }
+  private phantomSide(w: number): "home" | "away" | undefined {
+    return this.phantom && w >= this.phantom.startW && w < this.phantom.endW ? this.phantom.side : undefined;
+  }
+  private snapAt(w: number): Snap {
+    const s = this.tl.snap(w);
+    const side = this.phantomSide(w);
+    if (side && s.state === "in") s[side] += 1;
+    return s;
+  }
+
+  get homeTeamId(): string { return this.homeId; }
+  get awayTeamId(): string { return this.awayId; }
+  /** ESPN team ids of this game */
+  teamIds(): string[] { return [this.homeId, this.awayId]; }
+  file(name: string): J | undefined { return this.files.get(name); }
+  get hasNhl(): boolean { return !!this.nhlPbp; }
+  get nhlId(): number | undefined { return this.nhlPbp?.id; }
+  /** virtual ms at which the recording ends */
+  get endV(): number { return this.tl.end - this.origin; }
+
+  private soccerScore(w: number): { home: number; away: number } {
+    let home = 0, away = 0;
+    for (const { d, w: dw } of this.details) {
+      if (dw > w) break;
+      if (!d.scoringPlay || d.shootout) continue;
+      const n = Number(d.scoreValue ?? 1) || 1;
+      if (String(d.team?.id) === this.homeId) home += n;
+      else away += n;
+    }
+    return { home, away };
+  }
+
+  // ---- NHL time mapping: NHL play-by-play has no wall clock, ESPN's has; map (period, time) -> wall via ESPN marks ----
+  private nhlMarks(): Mark[] {
+    return (this.tl as PlayTimeline).marks;
+  }
+  private markWall(type: RegExp, period: number): number | undefined {
+    return this.nhlMarks().find((k) => k.period === period && type.test(k.type))?.w;
+  }
+  private nhlWall(p: J, idx: number, all: J[]): number {
+    const per = Number(p.periodDescriptor?.number ?? 1);
+    const key: string = p.typeDescKey;
+    const marks = this.nhlMarks();
+    if (key === "period-start") return this.markWall(/^Period Start$/, per) ?? this.nhlMarks()[0].w;
+    if (key === "period-end") return this.markWall(/^Period End$/, per) ?? this.tl.end;
+    if (key === "game-end") return marks.find((k) => /^End of Game$/.test(k.type))?.w ?? this.tl.end;
+    if (key === "shootout-complete") return this.markWall(/^Shootout End$/, per) ?? this.tl.end;
+    if (per >= 5) {
+      // shootout attempts: pair the k-th NHL goal with ESPN's k-th shootout scoring play, others spread across the SO
+      const start = this.markWall(/^Period Start$/, per) ?? marks[0].w;
+      const endW = this.markWall(/^Shootout End$/, per) ?? this.tl.end;
+      const soMarks = marks.filter((k) => k.period >= 5 && k.scoring);
+      if (key === "goal") {
+        const nth = all.slice(0, idx).filter((x: J) => x.typeDescKey === "goal" && Number(x.periodDescriptor?.number) >= 5).length;
+        return soMarks[nth]?.w ?? start + (endW - start) / 2;
+      }
+      return start + (endW - start) * 0.5;
+    }
+    return this.wallInPeriod(per, mmss(p.timeInPeriod));
+  }
+  private wallInPeriod(per: number, el: number): number {
+    const ks = this.nhlMarks().filter((k) => k.period === per && k.el !== undefined);
+    if (!ks.length) return this.tl.first;
+    const j = ks.findIndex((k) => (k.el as number) >= el);
+    if (j < 0) return ks[ks.length - 1].w;
+    if (j === 0 || (ks[j].el as number) === el) return ks[j].w;
+    const a = ks[j - 1], b = ks[j];
+    const f = (el - (a.el as number)) / Math.max(1, (b.el as number) - (a.el as number));
+    return Math.round(a.w + f * (b.w - a.w));
+  }
+  private nhlGoalWallClock(g: J): number {
+    const per = Number(g.period ?? g.periodDescriptor?.number ?? 1);
+    if (per >= 5) {
+      const soMarks = this.nhlMarks().filter((k) => k.period >= 5 && k.scoring);
+      return soMarks[0]?.w ?? this.tl.end;
+    }
+    return this.wallInPeriod(per, mmss(g.timeInPeriod));
+  }
+
+  // ---- ESPN scoreboard event ----------------------------------------------------------------------------------------
+  private statusFor(s: Snap): J {
+    const L = this.league;
+    const sport = L.sport;
+    const type = (id: string, name: string, state: string, description: string, detail: string, completed = false) => ({ id, name, state, completed, description, detail, shortDetail: detail });
+    if (s.state === "pre") return { clock: 0, displayClock: "0:00", period: 0, type: type("1", "STATUS_SCHEDULED", "pre", "Scheduled", "Scheduled (SIM replay)") };
+    if (sport === "soccer") {
+      const disp = SoccerTimeline.display(s.clockS ?? 0, s.period);
+      if (s.halftime) return { clock: 2700, displayClock: "45'", period: 1, type: type("25", "STATUS_HALFTIME", "in", "Halftime", "HT") };
+      return { clock: Math.floor(s.clockS ?? 0), displayClock: disp, period: s.period, type: type(s.period === 1 ? "2" : "3", s.period === 1 ? "STATUS_FIRST_HALF" : "STATUS_SECOND_HALF", "in", s.period === 1 ? "1st Half" : "2nd Half", disp) };
+    }
+    if (sport === "baseball") {
+      const d = `${s.half === "Bottom" ? "Bot" : "Top"} ${ord(s.period)}`;
+      return { clock: 0, displayClock: "0:00", period: s.period, type: type("2", "STATUS_IN_PROGRESS", "in", "In Progress", d) };
+    }
+    const noun = sport === "hockey" ? "Period" : "Quarter";
+    const label = sport === "hockey" && s.period === 4 ? "OT" : sport !== "hockey" && s.period > 4 ? (s.period === 5 ? "OT" : `${s.period - 4}OT`) : `${ord(s.period)} ${noun}`;
+    if (s.intermission) {
+      if (s.halftime && sport !== "hockey") return { clock: 0, displayClock: "0:00", period: s.period, type: type("23", "STATUS_HALFTIME", "in", "Halftime", "Halftime") };
+      return { clock: 0, displayClock: "0:00", period: s.period, type: type("22", "STATUS_END_PERIOD", "in", "End of Period", `End of ${label}`) };
+    }
+    const disp = fmtClock(s.clockS ?? 0);
+    if (sport === "hockey" && s.period >= 5) return { clock: 0, displayClock: "0:00", period: s.period, type: type("2", "STATUS_IN_PROGRESS", "in", "In Progress", "Shootout") };
+    return { clock: Math.round((s.clockS ?? 0) * 10) / 10, displayClock: disp, period: s.period, type: type("2", "STATUS_IN_PROGRESS", "in", "In Progress", `${disp} - ${label}`) };
+  }
+
+  /** ESPN scoreboard event as of virtual time v. `startAtMs` = the (rebased) scheduled start to report. */
+  espnEvent(v: number, startAtMs: number): J {
+    const w = this.origin + v;
+    const s = this.snapAt(w);
+    const ev = structuredClone(this.ev);
+    const comp = ev.competitions[0];
+    const iso = new Date(startAtMs).toISOString().slice(0, 16) + "Z";
+    ev.date = iso;
+    comp.date = iso;
+    if (ev.startDate) ev.startDate = iso;
+    comp.odds = [{ details: "SIM REPLAY", overUnder: 0 }];
+    if (s.state !== "post") {
+      const status = this.statusFor(s);
+      ev.status = status;
+      comp.status = structuredClone(status);
+      const ls = this.tl.linescores(w);
+      for (const c of comp.competitors) {
+        const side = c.homeAway === "home" ? "home" : "away";
+        c.score = String(side === "home" ? s.home : s.away);
+        c.winner = false;
+        c.linescores = ls[side].map((value) => ({ value }));
+        if (this.league.sport === "soccer" || s.state === "pre") delete c.linescores;
+      }
+      if (this.league.sport === "soccer") comp.details = this.details.filter((x) => x.w <= w).map((x) => x.d);
+    } else {
+      comp.status = structuredClone(ev.status);
+    }
+    return ev;
+  }
+
+  /** ESPN summary as of virtual time v (plays/keyEvents/scoringPlays up to v; boxscore scaled by elapsed time). */
+  espnSummary(v: number): J {
+    const w = this.origin + v;
+    const sum = structuredClone(this.sum);
+    const s = this.snapAt(w);
+    const vis = (p: J) => {
+      const t = p.wallclock ? Date.parse(p.wallclock) : this.playWall.get(String(p.id));
+      return t !== undefined && t <= w;
+    };
+    if (sum.plays) sum.plays = sum.plays.filter(vis);
+    if (sum.scoringPlays) sum.scoringPlays = sum.scoringPlays.filter(vis);
+    if (sum.drives) sum.drives.previous = sum.drives.previous.map((d: J) => ({ ...d, plays: (d.plays ?? []).filter(vis) })).filter((d: J) => d.plays.length);
+    if (sum.keyEvents) sum.keyEvents = sum.keyEvents.filter(vis);
+    const f = s.state === "post" ? 1 : s.state === "pre" ? 0 : Math.min(1, Math.max(0, (w - this.tl.first) / Math.max(1, this.tl.end - this.tl.first)));
+    if (f < 1) scaleBoxscore(sum.boxscore, f);
+    const hc = sum.header?.competitions?.[0];
+    if (hc && s.state !== "post") {
+      hc.status = this.statusFor(s);
+      for (const c of hc.competitors ?? []) c.score = String(c.homeAway === "home" ? s.home : s.away);
+    }
+    return sum;
+  }
+
+  // ---- NHL feed -----------------------------------------------------------------------------------------------------
+  private nhlClock(s: Snap): J {
+    if (s.state === "pre") return { timeRemaining: "20:00", secondsRemaining: 1200, running: false, inIntermission: false };
+    if (s.intermission) return { timeRemaining: fmtClock2(s.breakLeftS ?? 0), secondsRemaining: Math.round(s.breakLeftS ?? 0), running: false, inIntermission: true };
+    return { timeRemaining: fmtClock2(s.clockS ?? 0), secondsRemaining: Math.round(s.clockS ?? 0), running: s.running, inIntermission: false };
+  }
+  private nhlPeriod(p: number): J {
+    return { number: p, periodType: p <= 3 ? "REG" : p === 4 ? "OT" : "SO", maxRegulationPeriods: 3 };
+  }
+  private nhlState(s: Snap): string {
+    return s.state === "pre" ? "FUT" : s.state === "in" ? "LIVE" : "FINAL";
+  }
+
+  /** the score/now `games[]` entry as of v */
+  nhlScoreGame(v: number, startAtMs: number): J | undefined {
+    if (!this.nhlScore) return undefined;
+    const w = this.origin + v;
+    const s = this.snapAt(w);
+    const g = structuredClone(this.nhlScore);
+    g.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
+    g.gameState = this.nhlState(s);
+    if (s.state !== "post") {
+      g.goals = (g.goals ?? []).filter((_: J, i: number) => this.nhlGoalWall[i] <= w);
+      const reg = (g.goals as J[]).filter((x) => Number(x.period) <= 4);
+      g.homeTeam.score = reg.filter((x) => x.teamAbbrev === g.homeTeam.abbrev).length;
+      g.awayTeam.score = reg.filter((x) => x.teamAbbrev === g.awayTeam.abbrev).length;
+      const ph = this.phantomSide(w);
+      if (ph && s.state === "in") (ph === "home" ? g.homeTeam : g.awayTeam).score += 1;
+      if (s.state === "pre") {
+        delete g.periodDescriptor;
+        delete g.period;
+      } else {
+        g.periodDescriptor = this.nhlPeriod(s.period);
+        g.period = s.period;
+      }
+    }
+    g.clock = this.nhlClock(s);
+    return g;
+  }
+
+  /** gamecenter/<id>/play-by-play as of v */
+  nhlPbpAt(v: number, startAtMs: number): J | undefined {
+    if (!this.nhlPbp) return undefined;
+    const w = this.origin + v;
+    const s = this.snapAt(w);
+    const d = structuredClone(this.nhlPbp);
+    d.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
+    d.gameState = this.nhlState(s);
+    const all: J[] = d.plays;
+    d.plays = all.filter((_: J, i: number) => this.nhlPlayWall[i] <= w);
+    if (s.state !== "post") {
+      const homeId = d.homeTeam.id;
+      const regGoals = (d.plays as J[]).filter((p) => p.typeDescKey === "goal" && Number(p.periodDescriptor?.number) <= 4);
+      d.homeTeam.score = regGoals.filter((p) => p.details?.eventOwnerTeamId === homeId).length;
+      d.awayTeam.score = regGoals.length - d.homeTeam.score;
+      const ph = this.phantomSide(w);
+      if (ph && s.state === "in") d[ph === "home" ? "homeTeam" : "awayTeam"].score += 1;
+      if (s.state === "pre") delete d.periodDescriptor;
+      else d.periodDescriptor = this.nhlPeriod(s.period);
+      delete d.gameOutcome;
+      delete d.summary;
+    }
+    d.clock = this.nhlClock(s);
+    return d;
+  }
+
+  snapshot(v: number): Snap {
+    return this.snapAt(this.origin + v);
+  }
+
+  /** things worth seeking to */
+  markers(): Marker[] {
+    const out: Marker[] = [{ kind: "start", label: "pre-game (virtual 0)", v: 0 }];
+    const V = (w: number) => w - this.origin;
+    out.push({ kind: "start", label: "game start", v: V(this.tl.first) });
+    if (this.phantom) out.push({ kind: "goal", label: "phantom goal (will be overturned)", v: this.phantom.startW - this.origin });
+    if (this.tl instanceof PlayTimeline) {
+      const m = this.tl.marks;
+      let n = 0;
+      let g = 0;
+      for (let i = 0; i < m.length; i++) {
+        if (i > 0 && m[i].home + m[i].away > m[i - 1].home + m[i - 1].away) out.push({ kind: "goal", label: `goal ${++g}`, v: V(m[i].w) });
+        if (i + 1 < m.length && m[i + 1].period > m[i].period) {
+          n++;
+          out.push({ kind: "intermission", label: `intermission ${n}`, v: V(m[i].w) });
+          out.push({ kind: "resume", label: `resume ${n}`, v: V(m[i + 1].w) });
+        }
+      }
+      // shootout/final tally change is not in the marks (we hold the score); the end of the recording is the final marker
+    } else {
+      let g = 0, c = 0;
+      for (const { d, w } of this.details) {
+        if (d.scoringPlay && !d.shootout) out.push({ kind: "goal", label: `goal ${++g}`, v: V(w) });
+        else if (d.yellowCard || d.redCard) out.push({ kind: "card", label: `card ${++c} (${d.redCard ? "red" : "yellow"})`, v: V(w) });
+      }
+      const st = this.tl as SoccerTimeline;
+      out.push({ kind: "intermission", label: "intermission 1", v: V((st as any).ht) }, { kind: "resume", label: "resume 1", v: V((st as any).s2) });
+    }
+    out.push({ kind: "final", label: "final", v: V(this.tl.end) });
+    return out.sort((a, b) => a.v - b.v);
+  }
+
+  /** Does `espnEvent` list this game for a `dates=YYYYMMDD` request? */
+  hasDate(ymd: string, todayYmd: string): boolean {
+    return ymd === todayYmd || ymd === this.recordedDay;
+  }
+}
+
+/** Scale count-like boxscore values by the fraction of the game played (percentages and averages are left alone). */
+export function scaleBoxscore(box: J, f: number): void {
+  // anchored: "accuratePasses" must scale (it contains "rate"), "possessionPct" / "thirdDownEff" must not
+  const keep = /(pct|percent|percentage|eff|avg|average|rate|ratio)$/i;
+  const scale = (s: J) => {
+    if (Array.isArray(s.stats)) return s.stats.forEach(scale);
+    if (!s || typeof s.displayValue !== "string" || keep.test(s.name ?? "")) return;
+    const dv: string = s.displayValue;
+    let out: string | undefined;
+    let m: RegExpExecArray | null;
+    if ((m = /^(\d+)$/.exec(dv))) out = String(Math.round(Number(m[1]) * f));
+    else if ((m = /^(\d+)([-/])(\d+)$/.exec(dv))) out = `${Math.round(Number(m[1]) * f)}${m[2]}${Math.round(Number(m[3]) * f)}`;
+    else if ((m = /^(\d+):(\d{2})$/.exec(dv))) out = fmtClock(Number(m[1]) * 60 * f + Number(m[2]) * f);
+    if (out !== undefined) {
+      s.displayValue = out;
+      if (typeof s.value === "number") s.value = Number(out) || s.value;
+    }
+  };
+  for (const t of box?.teams ?? []) (t.statistics ?? []).forEach(scale);
+}

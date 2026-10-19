@@ -1,0 +1,25 @@
+# Homeroom: local-first sports engine + TV views + Home Assistant bridge.
+#   cp .env.example .env   # set PUBLIC_BASE_URL to http://<this-machine's-LAN-IP>:8080
+#   docker compose up -d --build
+services:
+  homeroom:
+    build: .
+    image: homeroom:local
+    container_name: homeroom
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # URL your speakers / Home Assistant use to reach this container (goal horn links are built from it)
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # must match the patched HA integration (ha/patch_integration.py --key ...)
+      PUSHER_APP_KEY: ${PUSHER_APP_KEY:-homeroom-local-key}
+      PUSHER_APP_SECRET: ${PUSHER_APP_SECRET:-homeroom-local-secret}
+      # optional: require `Authorization: Bearer <token>` on mutating /api calls
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # optional: only this API key may link a Home Assistant install
+      HOMEROOM_API_KEY: ${HOMEROOM_API_KEY:-}
+    volumes:
+      - ./data:/data     # SQLite database + settings (persistent)
+      - ./media:/media   # goal horns: media/horns/<league>/<ABBR>.mp3 (persistent, also uploadable in the UI)

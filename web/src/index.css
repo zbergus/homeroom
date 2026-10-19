@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { @apply bg-ink-950 text-slate-100 font-sans antialiased; }
+
+/* ---------- kiosk ---------- */
+.kiosk { --u0: min(1vw, 1.7778vh); --u: var(--u0); cursor: none; overflow: hidden; user-select: none; }
+.kiosk * { cursor: none !important; }
+.kiosk ::-webkit-scrollbar { display: none; }
+html.kiosk-html, html.kiosk-html body { overflow: hidden; }
+
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+@keyframes goal-in { 0% { opacity: 0; transform: scale(.6); } 60% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes goal-bg { 0% { opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes goal-sweep { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
+@keyframes goal-text { 0%,100% { letter-spacing: .02em; } 50% { letter-spacing: .06em; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(2vh); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes card-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,255,255,.95), 0 0 0 0 rgba(255,255,255,.6); transform: scale(1); }
+  20%  { transform: scale(1.025); }
+  100% { box-shadow: 0 0 0 1.4vmin rgba(255,255,255,0), 0 0 6vmin 2vmin rgba(255,255,255,0); transform: scale(1); }
+}
+@keyframes score-pop { 0% { transform: scale(1); } 30% { transform: scale(1.5); color: #fff; } 100% { transform: scale(1); } }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes live-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+.goal-enter { animation: goal-in .5s cubic-bezier(.2,.9,.3,1.2) both; }
+.goal-bg { animation: goal-bg 6s linear both; }
+.goal-sweep { animation: goal-sweep 1.4s .2s ease-out both; }
+.goal-text { animation: goal-text 1.2s ease-in-out infinite; }
+.slide-up { animation: slide-up .6s ease both; }
+.fade-in { animation: fade-in .6s ease both; }
+.card-pulse { animation: card-pulse 1.2s ease-out 5; z-index: 2; }
+.score-pop { animation: score-pop .9s ease-out; }
+.live-dot { animation: live-dot 1.6s ease-in-out infinite; }
+.marquee-track { animation: marquee var(--dur, 60s) linear infinite; will-change: transform; }
+
+/* LED matrix: full-colour content under a dot-grid mask, slight glow */
+.led-panel { filter: brightness(1.25) saturate(1.25) drop-shadow(0 0 .1em rgba(255,255,255,.18)); }
+.led-dots {
+  background-image: radial-gradient(circle at 50% 50%, transparent 0 36%, rgba(0,0,0,.88) 64%);
+  background-size: var(--dot, .6vmin) var(--dot, .6vmin);
+}
+@keyframes bar-flash { 0%,100% { filter: none; } 50% { filter: brightness(2.6) saturate(.6); } }
+.bar-flash { animation: bar-flash .5s steps(2, jump-none) 14; }
+@keyframes toast-in { 0% { opacity: 0; transform: translate(-50%, -150%); } 8%,90% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -150%); } }
+.toast-banner { animation: toast-in 5s ease both; }
+
+.font-display { font-stretch: condensed; letter-spacing: .01em; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* overlay stays visible, only motion is removed */
+  .goal-enter, .goal-sweep, .goal-text, .slide-up, .score-pop, .card-pulse, .live-dot { animation: none !important; }
+  .goal-bg { animation: none !important; opacity: 1; }
+  .fade-in { animation: none !important; }
+  .marquee-track { animation-duration: 240s; }
+  .bar-flash { animation: none !important; }
+  .toast-banner { animation: none !important; transform: translate(-50%,0); }
+}

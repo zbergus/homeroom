@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+data/*
+!data/.gitkeep
+media/horns/*/*.mp3
+ha/custom_components
+.playwright-mcp
+*.log
+
+# screenshots of the logged-in third-party app (contain account details)
+docs/research/app-*.png
+docs/research/instagram.png
+docs/research/ref-*

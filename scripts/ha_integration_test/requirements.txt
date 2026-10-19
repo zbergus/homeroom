@@ -1,0 +1,5 @@
+# Resolved offline-from-PyPI on 2026-10-19 with Python 3.14 (Home Assistant 2026.10.2). Upstream pins an old plugin
+# (pytest-homeassistant-custom-component==0.12.49) that does not install on current Pythons; use the newest instead.
+pytest-homeassistant-custom-component
+pysher==1.0.8
+httpx

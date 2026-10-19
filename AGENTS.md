@@ -1,0 +1,70 @@
+# AGENTS.md: Homeroom
+
+Context for AI coding agents (and humans) working in this repo. Read this first; it is the shortest path to not breaking things.
+Longer docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md) · [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) · [`SPEC.md`](SPEC.md) (wire contracts + research) · [`README.md`](README.md) (user-facing).
+
+## What this is
+A **self-hosted, local-first replacement for the ConnectedRoom cloud** for one person's home. It watches live games (ESPN public scoreboard + the official NHL API), detects game start / period changes / scores / game end, and drives Home Assistant (lights, goal horn, TTS) plus three kiosk TV views (`/scoreboard`, `/grid`, `/ticker`) and a control dashboard (`/`). Personal use, LAN only, no accounts, no billing, no cloud.
+
+It does **not** replicate ConnectedRoom's device connectors (Hue, Govee, Sonos…): Home Assistant already owns the devices. Homeroom decides *what should happen and when*; HA executes.
+
+## Repo map
+```
+server/   Node 22 + TypeScript (Fastify, ws, node:sqlite)   the engine, APIs, Pusher-compatible bridge
+web/      Vite + React + Tailwind                           dashboard + TV views (dark mode only)
+ha/       patch_integration.py                              generates a local copy of the upstream HA integration
+scripts/  e2e_pysher.py, fetch-horns.mjs, make-default-horn.sh
+docs/     ARCHITECTURE / HOME_ASSISTANT / DEVELOPMENT, research/ (reference screenshots, see its README)
+data/ media/   runtime volumes (SQLite, goal horns); git-ignored contents
+```
+Key server files: `engine/engine.ts` (state, diff, events, delay), `engine/poller.ts` (adaptive polling), `engine/triggers.ts`, `outputs/dispatch.ts` (the one gate before any automation output), `outputs/pusher.ts` (Pusher protocol server), `outputs/lights.ts`, `providers/{espn,nhl,boxscore,insight}.ts`, `http.ts` (all routes), `app.ts` (wiring; tests build the whole app with it), `store.ts` (SQLite + settings).
+
+## Commands
+```bash
+cd server && npm install && npm test          # vitest; must stay green
+cd server && npm run typecheck && npm run dev # :8080 (set PORT, DATA_DIR, MEDIA_DIR, WEB_DIR for throw-away runs)
+cd web && npm install && npx tsc --noEmit && npm run build   # `?mock=1` on any view runs without a backend
+docker compose up -d --build                  # packaged stack
+python3 scripts/e2e_pysher.py --base http://127.0.0.1:8080 --key <PUSHER_APP_KEY>   # real pysher client (needs a venv with pysher==1.0.8 httpx)
+# patched integration inside real Home Assistant CORE (headless, no devices): see scripts/ha_integration_test/README.md
+node scripts/fetch-horns.mjs --dry-run        # verify the horn manifest URLs (NHL only); drop --dry-run to import
+```
+Always finish a change with: server `npx tsc --noEmit && npx vitest run`, web `npx tsc --noEmit && npm run build`. For wire-level changes also run the pysher e2e. For UI changes, look at real screenshots (see DEVELOPMENT.md).
+
+## Invariants: do not break these
+1. **The HA integration contract is fixed** (`SPEC.md` §1). The unmodified upstream integration only understands five events: `goal`, `game_start`, `game_end`, `period_start`, `period_end`, delivered over Pusher as `{event, channel, data:<JSON string>}`. Richer ideas are **internal triggers/filters** (touchdown, win…) or **UI/REST/light-only events** (`goal_overturned`, `card`, `powerplay`; see `INTERNAL_ONLY` in `outputs/dispatch.ts`), never new Pusher events. Never send `already_triggered_from_score_change` (upstream crashes on it). `goal_horn` must follow `goal` within ~3 s or the integration speaks TTS first.
+2. **Everything a viewer or automation could be spoiled by goes through the delay buffer** (`engine/delay.ts`, 0–120 s, 0.5 s steps, per game > per league > global, release order never goes backwards per game). Only *manual* events (buttons, test) are immediate by default. `/api/games/raw` is the one undelayed view and is **control-plane only**: never feed it to a TV view.
+3. **One gate for automation output**: `Dispatcher.handle` (`outputs/dispatch.ts`). It applies `automations_enabled` and `my_team_only`; the TV UI always sees every event. Manual events bypass the gates. Every event is recorded in the event log with an outcome and reason; keep it that way (the diagnostics panel depends on it).
+4. **First sight of a game seeds state silently** (no replayed goals); score *decreases* never fire events; a drop shortly after an announced goal may produce a UI/REST-only `goal_overturned` after a 20 s confirm window. `Engine.commit` works on a copy of its input; do not mutate caller objects.
+5. **Providers are unofficial and flaky.** Every parser is defensive; a missing field hides a row/screen, it never throws or shows blanks. New parsers get a real-payload fixture test.
+6. **Secrets**: the Home Assistant token is write-only (`GET /api/settings` returns `token_set`, never the token). Never write tokens/keys to files, logs, tests, memory, or commits. `ADMIN_TOKEN` (optional) guards mutating routes and `GET /api/hook/*`.
+7. **No third-party brand assets or audio** in the product or repo: no ConnectedRoom logos/copy, no bundled horns. `docs/research/ref-*`, `app-*`, `instagram.png` are local reference only and git-ignored.
+8. **The delay buffer is persistent.** Every `buffer.push` goes through `Engine.pushOut`; queued events live in the `pending_events` table until released; `Engine.restore()` runs once in `createApp` after listeners attach. Overdue by more than the grace (`HOMEROOM_RESTORE_GRACE_S`, 10 s) means dropped with a log line, never replayed late. The 20 s `goal_overturned` confirm timer is not restored.
+9. **Horn volume is opt-in and best effort** (`outputs/horn_volume.ts`): it never blocks the horn or lights, never runs without `horn_volume` + `horn_players` + HA url/token, reads the player's volume first so it can restore it, and stays under the ~3 s goal-to-horn rule.
+10. **Provider health**: `/api/status.providers` is fed by `Poller.health`; wrap any new provider call with `this.health.track(...)` so a silent feed failure shows up as a warning.
+11. Lights: effects are capability-aware. White-only bulbs (`supports_color=false`) and plugs flash instead of alternating; a `light_effect` the light does not advertise flashes instead.
+12. **Horns are served through `audio/horns.ts`** (`/media/horns/...`): length cap `horn_max_s` (default 30; a long horn delays the HA announcement), `horn_fade_ms`, `horn_normalize`, `horn_scope` (`favorites|all|home`). The original file is never modified; processed copies live in `$DATA_DIR/cache/horns/`; any processing failure must serve the original bytes; ffmpeg is called with an arg array (no shell) and may be absent (cut-only mode, pure-JS MP3 frame cut). Tests inject a fake runner and must pass without ffmpeg. The Docker image installs ffmpeg (+~400 MB).
+
+## Known provider quirks (each cost time once)
+- ESPN's **undated scoreboard lags the real date for hours** after midnight ET; the poller asks for today explicitly when `day` differs (`tickEspn`).
+- ESPN **rejects date ranges** (HTTP 400); the 7-day calendar is one request per league per day, cached.
+- Scoreboard `statistics` are season/YTD junk; real game stats come from `summary?event=` `boxscore` (`providers/boxscore.ts`, per-sport row tables written against real labels).
+- ESPN `strength` arrives as "even-strength"/"power-play"; normalise to `ev|pp|sh|en` at the source (`providers/strength.ts`). NHL feed derives strength from `situationCode`.
+- Team stats have **no PP%/PK%**; the "recent form" rows use what exists (see `providers/insight.ts`).
+- ESPN reports a clock value but no "running" flag; the engine infers it from consecutive polls. NHL reports `running` directly.
+- NHL ids ≠ ESPN ids: games are matched by start time ± 3 h and team nickname; the NHL feed becomes authoritative for score/clock while fresh (<10 s) so provider disagreement cannot cause a phantom double goal.
+
+## Conventions
+- TypeScript strict, ESM (`.js` import suffixes). Match the surrounding style; comments explain *why*. No new runtime dependencies without a reason.
+- Settings changes: validate in `Store.patchSettings`, expose in `types.ts` (server **and** `web/src/types.ts`; keep them in sync by hand), and only call `poller.poke()` when polling inputs changed (not for the delay slider).
+- UI: everything scales with the `--u` unit system on TV views (no fixed px), tabular numerals, landscape **and** portrait, hide blocks with missing data. Respect `prefers-reduced-motion` except the goal overlay stays visible.
+- Tests: pure logic in `server/test/*.test.ts`; whole-stack tests use `createApp({ store: new Store(":memory:") ... port: 0 })`; parsers use `server/test/fixtures/*.json` captured from real feeds. Tests must not write into the repo (vitest config points `DATA_DIR`/`MEDIA_DIR` at a temp dir).
+- Commits only when the user asks. Do not push.
+
+## Working with the browser (Playwright)
+The Playwright MCP browser is a **shared, single-instance** profile: if it says "Browser is already in use", another session holds it; do not kill it unless the user says it is unused. Headless fallback: a Playwright 1.56.x install (browsers are cached under `~/Library/Caches/ms-playwright`) driven from a script **outside** the repo. `fastify-static` registers the asset list at boot, so **restart the server after rebuilding `web/`** or new bundles 404 into the SPA fallback.
+
+## Status and backlog
+Implemented: opt-in leagues (WNBA, NCAA football, NCAA hockey; off by default, enable in Setup → Leagues), soccer bookings (`card` events, from scoreboard `details[]`; soccer goals/scorers too) and NHL power plays (`powerplay`, from play-by-play `situationCode`), both tested against real payloads but **not yet seen on a live game**; engine + state machine, adaptive polling (+NHL fast poller), delay buffer with per-game/league/global delays, Pusher bridge + REST events, light rules (triggers, capability-aware, light effects, restore), manual triggers + hook URLs, diagnostics (`/api/status`, `/api/events/recent`), delay calibration (`/api/calibrate`), break-screen data (boxscore rows, team form, players to watch), dashboard, horns manager, TV views, Docker packaging.
+Not verified against real hardware/HA yet: the patched integration runs inside a headless real HA core in `scripts/ha_integration_test/` (login, pysher, `connectedroom_event`, `light.turn_on`, `media_player.play_media`, `tts.speak` all pass) but has never run inside the user's actual Home Assistant; that test does not cover device sync / `get_state` / `execute`. Also unverified: flash speed on cloud-throttled bulbs; soccer/NFL/MLB behaviour on a live game (only fixtures).
+Backlog (see the approved plan notes in `SPEC.md` §6.0–6.0c): NFL 1st/3rd down from scoreboard `situation` (needs a live game to verify the fields), MLB Stats API for home-run vs run, compact scoreboard plate and multi-pane `/screen/<name>` presets, basketball/football "players to watch".
