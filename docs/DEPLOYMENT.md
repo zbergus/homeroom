@@ -28,15 +28,11 @@ The first image appears after the first run of the `publish` job on `master`: ch
 
 ### 2. Host directories
 
-The image runs as the `node` user (uid/gid 1000) with a read-only root filesystem and writes only to two mounts:
-
-```bash
-mkdir -p /mnt/apps/homeroom/data /mnt/apps/homeroom/media
-chown -R 1000:1000 /mnt/apps/homeroom
-```
-
-Change the paths with `HOMEROOM_DATA_DIR` / `HOMEROOM_MEDIA_DIR` if your apps pool lives elsewhere. `data` holds the SQLite
-database and settings; `media` holds the goal horns (`media/horns/<league>/<ABBR>.mp3`, also uploadable in the UI).
+The image runs as the `node` user (uid/gid 1000) with a read-only root filesystem and writes only to two mounts,
+`/mnt/apps/homeroom/data` and `/mnt/apps/homeroom/media` by default (`HOMEROOM_DATA_DIR` / `HOMEROOM_MEDIA_DIR` change them).
+You don't need to create them: Docker creates missing directories as root, and the `init-perms` service in the compose file
+then hands them to uid 1000 on every deploy before the app starts. `data` holds the SQLite database and settings; `media` holds
+the goal horns (`media/horns/<league>/<ABBR>.mp3`, also uploadable in the UI).
 
 ### 3. Environment
 
