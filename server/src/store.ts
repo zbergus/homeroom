@@ -4,8 +4,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { LEAGUES } from "./leagues.js";
-import { validDelay } from "./engine/delay.js";
-import { MEDIA_PLAYER_RE } from "./outputs/horn_volume.js";
+import { firstIssue, SettingsPatchSchema } from "./schemas.js";
 import type { LightAction, Settings } from "./types.js";
 
 // vite (vitest) does not know `node:sqlite` is a builtin yet, so load it at runtime
@@ -37,6 +36,9 @@ export const DEFAULT_SETTINGS: Settings = {
   horn_volume: null,
   horn_players: [],
 };
+
+/** one home has one, maybe two, Home Assistant installs */
+export const MAX_LINKS = 20;
 
 export interface LinkRow {
   api_key: string;
@@ -80,52 +82,20 @@ export class Store {
     if (!s.public_base_url) s.public_base_url = DEFAULT_SETTINGS.public_base_url;
     return s;
   }
-  /** Returns an error string, or undefined when applied. */
-  patchSettings(patch: Partial<Settings>): string | undefined {
-    if (patch.delay_global_s !== undefined && !validDelay(patch.delay_global_s)) return "delay_global_s must be 0..120 in 0.5 steps";
-    if (patch.delay_by_game) {
-      for (const [k, v] of Object.entries(patch.delay_by_game)) if (!validDelay(v)) return `delay_by_game[${k}] must be 0..120 in 0.5 steps`;
-    }
-    if (patch.delay_by_league) {
-      for (const [k, v] of Object.entries(patch.delay_by_league)) {
-        if (!LEAGUES.some((l) => l.id === k)) return `delay_by_league: unknown league ${k}`;
-        if (!validDelay(v)) return `delay_by_league[${k}] must be 0..120 in 0.5 steps`;
-      }
-    }
-    for (const k of ["my_team_only", "automations_enabled", "auto_sync_favorites", "tts_enabled"] as const) {
-      if (patch[k] !== undefined && typeof patch[k] !== "boolean") return `${k} must be a boolean`;
-    }
-    if (patch.sync_excluded !== undefined && (!Array.isArray(patch.sync_excluded) || patch.sync_excluded.some((x) => typeof x !== "string"))) {
-      return "sync_excluded must be string[]";
-    }
-    if (patch.enabled_leagues !== undefined || patch.grid_leagues !== undefined) {
-      for (const list of [patch.enabled_leagues, patch.grid_leagues]) {
-        if (list !== undefined && (!Array.isArray(list) || list.some((id) => !LEAGUES.some((l) => l.id === id)))) return "league lists must contain known league ids";
-      }
-    }
-    for (const k of ["poll_idle_s", "poll_live_s", "nhl_fast_poll_ms"] as const) {
-      const v = patch[k];
-      if (v !== undefined && !(typeof v === "number" && v > 0)) return `${k} must be a positive number`;
-    }
-    if (patch.poll_live_s !== undefined && patch.poll_live_s < 1) return "poll_live_s must be >= 1";
-    if (patch.nhl_fast_poll_ms !== undefined && patch.nhl_fast_poll_ms < 250) return "nhl_fast_poll_ms must be >= 250";
-    if (patch.horn_volume !== undefined && patch.horn_volume !== null && !(typeof patch.horn_volume === "number" && patch.horn_volume >= 0 && patch.horn_volume <= 1)) {
-      return "horn_volume must be a number between 0 and 1, or null to leave the volume alone";
-    }
-    if (patch.horn_scope !== undefined && !["favorites", "all", "home"].includes(patch.horn_scope)) return "horn_scope must be favorites, all or home";
-    if (patch.horn_max_s !== undefined && patch.horn_max_s !== null && !(typeof patch.horn_max_s === "number" && Number.isFinite(patch.horn_max_s) && patch.horn_max_s >= 2 && patch.horn_max_s <= 120)) {
-      return "horn_max_s must be a number between 2 and 120, or null for no limit";
-    }
-    if (patch.horn_fade_ms !== undefined && !(typeof patch.horn_fade_ms === "number" && Number.isFinite(patch.horn_fade_ms) && patch.horn_fade_ms >= 0 && patch.horn_fade_ms <= 5000)) {
-      return "horn_fade_ms must be a number between 0 and 5000";
-    }
-    if (patch.horn_normalize !== undefined && typeof patch.horn_normalize !== "boolean") return "horn_normalize must be a boolean";
-    if (patch.horn_players !== undefined) {
-      const l = patch.horn_players;
-      if (!Array.isArray(l) || l.length > 20 || l.some((e) => typeof e !== "string" || !MEDIA_PLAYER_RE.test(e))) return "horn_players must be up to 20 media_player.* entity ids";
-    }
+  /**
+   * Validates `input` (anything: it usually comes straight from a request body) and applies it.
+   * Returns an error string, or undefined when applied. Keys that are not settings are dropped.
+   */
+  patchSettings(input: unknown): string | undefined {
+    const parsed = SettingsPatchSchema.safeParse(input);
+    if (!parsed.success) return firstIssue(parsed.error);
+    const patch = parsed.data;
     const cur = this.getSettings();
-    this.kvSet("settings", { ...cur, ...patch, ha: { ...cur.ha, ...(patch.ha ?? {}) } });
+    const ha = { ...cur.ha, ...patch.ha };
+    // the token is bound to the URL it was issued for: pointing Homeroom somewhere else without a new token drops it,
+    // so a changed URL can never be used to read the stored token back out
+    if (patch.ha?.url !== undefined && patch.ha.url !== cur.ha.url && !patch.ha.token) ha.token = "";
+    this.kvSet("settings", { ...cur, ...patch, ha });
     return undefined;
   }
 
@@ -148,9 +118,11 @@ export class Store {
   }
 
   // ---- HA integration links (one stable identity per api key)
-  link(apiKey: string): LinkRow {
+  /** Returns undefined once MAX_LINKS installs are linked, so an open link endpoint cannot grow the table without bound. */
+  link(apiKey: string): LinkRow | undefined {
     const row = this.db.prepare("SELECT * FROM links WHERE api_key=?").get(apiKey) as LinkRow | undefined;
     if (row) return row;
+    if (this.allLinks().length >= MAX_LINKS) return undefined;
     const fresh: LinkRow = {
       api_key: apiKey,
       unique_id: randomBytes(8).toString("hex"),

@@ -1,3 +1,4 @@
+import { errMsg } from "../security.js";
 import type { Settings } from "../types.js";
 
 /** Entity ids Homeroom is willing to touch: media players only. */
@@ -73,7 +74,7 @@ export class HornVolume {
   }
 
   private warn(entity: string, err: unknown): void {
-    console.warn(`[horn-volume] ${entity}: ${(err as Error).message}`);
+    console.warn(`[horn-volume] ${entity}: ${errMsg(err)}`);
   }
 
   private async call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
@@ -82,6 +83,7 @@ export class HornVolume {
       method,
       headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "error", // the bearer token must only go to the URL the user configured
       signal: AbortSignal.timeout(this.o.timeoutMs),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${method} ${path}`);
@@ -120,7 +122,7 @@ export class HornVolume {
 
   /** Wait for the horn to finish (player leaves "playing"), then put the old volume back. */
   private async restoreLater(entity: string, e: Entry, gen: number): Promise<void> {
-    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms).unref());
     try {
       const start = Date.now();
       await sleep(this.o.firstCheckMs);

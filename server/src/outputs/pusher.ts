@@ -11,12 +11,16 @@ interface Client {
   alive: boolean;
 }
 
+const MAX_FRAME_BYTES = 16 * 1024;
+const MAX_CLIENTS = 100;
+
 /**
  * Minimal Pusher-protocol (v7) server: just what pysher / the ConnectedRoom HA integration needs.
  * Public + private channels, pusher:ping/pong, signed subscription auth. No presence, no client events.
  */
 export class PusherHub {
-  private wss = new WebSocketServer({ noServer: true });
+  // Pusher frames are tiny; the library default of 100 MiB would let any client on the network make us buffer and parse that much
+  private wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   private clients = new Set<Client>();
   private heartbeat: ReturnType<typeof setInterval>;
 
@@ -73,6 +77,10 @@ export class PusherHub {
   }
 
   private onConnection(ws: WebSocket): void {
+    if (this.clients.size >= MAX_CLIENTS) {
+      ws.close(1013, "too many connections");
+      return;
+    }
     const client: Client = { ws, id: `${randomInt(1e6)}.${randomInt(1e6)}`, channels: new Set(), alive: true };
     this.clients.add(client);
     ws.on("pong", () => (client.alive = true));

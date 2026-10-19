@@ -218,7 +218,7 @@ export interface LightAction {
   id: string;
   enabled: boolean;
   /** legacy: event types. Superseded by `triggers`; migrated on read. */
-  on?: EventType[];
+  on?: readonly string[];
   /** trigger ids from engine/triggers.ts (goal, touchdown, basket3, win, period_end, ...) */
   triggers?: string[];
   team_scope: "any" | "favorites" | "scoring_team";

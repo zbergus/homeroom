@@ -1,6 +1,7 @@
 import type { Engine } from "../engine/engine.js";
 import type { EventPayload, Rgb } from "../types.js";
 import { HornVolume, type HornVolumeOpts } from "./horn_volume.js";
+import { errMsg } from "../security.js";
 import type { PusherHub } from "./pusher.js";
 
 const rgb = (c: Rgb) => [c.r, c.g, c.b];
@@ -81,7 +82,7 @@ export class HaOutputs {
       const res = await this.post(ha.url, ha.token, "connectedroom_test", { message: "Homeroom connection test" });
       return { ok: res.ok, status: res.status, error: res.ok ? undefined : `HTTP ${res.status}` };
     } catch (e) {
-      return { ok: false, error: (e as Error).message };
+      return { ok: false, error: errMsg(e) };
     }
   }
 
@@ -90,6 +91,8 @@ export class HaOutputs {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify(body),
+      // never follow a redirect: the bearer token must only go to the URL the user configured
+      redirect: "error",
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) console.error(`[ha] ${event} -> HTTP ${res.status}`);

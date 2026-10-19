@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { type Config, loadConfig } from "./config.js";
 import { Engine } from "./engine/engine.js";
 import { Poller } from "./engine/poller.js";
 import type { HornService } from "./audio/horns.js";
@@ -8,6 +9,7 @@ import { HaOutputs } from "./outputs/ha.js";
 import { LightRules } from "./outputs/lights.js";
 import { PusherHub } from "./outputs/pusher.js";
 import { UiHub } from "./outputs/ui.js";
+import { isCrossSite } from "./security.js";
 import { Store } from "./store.js";
 
 export interface AppOptions {
@@ -18,6 +20,8 @@ export interface AppOptions {
   /** listen on this port (0 = ephemeral); omit to build without listening */
   port?: number;
   startPoller?: boolean;
+  /** defaults to `loadConfig()` (the process environment) */
+  config?: Config;
   engineDeps?: ConstructorParameters<typeof Engine>[2];
   /** tests inject a HornService with a fake ffmpeg runner and a temp cache */
   horns?: HornService;
@@ -39,8 +43,9 @@ export interface App {
 
 /** Wires every component together. index.ts runs it for real; tests build it with an in-memory store. */
 export async function createApp(o: AppOptions): Promise<App> {
+  const config = o.config ?? loadConfig();
   const store = o.store ?? new Store();
-  const engine = new Engine(store, undefined, o.engineDeps);
+  const engine = new Engine(store, undefined, { restoreGraceMs: config.restoreGraceMs, ...o.engineDeps });
   const poller = new Poller(engine);
   const hub = new PusherHub(store, o.appKey, o.appSecret);
   const lights = new LightRules(engine, hub);
@@ -55,8 +60,14 @@ export async function createApp(o: AppOptions): Promise<App> {
   const restored = engine.restore();
   if (restored.requeued || restored.dropped) console.log(`[engine] restored ${restored.requeued} pending event(s), dropped ${restored.dropped} stale`);
 
-  const http = await buildHttp({ engine, poller, hub, lights, ha, dispatcher, webDir: o.webDir, horns: o.horns, startedAt: Date.now() });
+  const http = await buildHttp({ engine, poller, hub, lights, ha, dispatcher, webDir: o.webDir, horns: o.horns, config, startedAt: Date.now() });
   http.server.on("upgrade", (req, socket, head) => {
+    // a web page on another site must not be able to open these sockets from a browser on this network
+    if (isCrossSite(req.headers, config.allowedOrigins)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
     if (!hub.handleUpgrade(req, socket, head) && !ui.handleUpgrade(req, socket, head)) socket.destroy();
   });
 

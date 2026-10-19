@@ -112,7 +112,7 @@ export class LightRules {
       const wait = effect === "alternate" ? a.duration * 1000 + RESTORE_MARGIN_MS : a.duration * 1000;
       // restoring colour/brightness does not stop a running built-in effect: name the light's own "off" effect when it has one
       const off = effect === "light_effect" && !before.effect ? effects.find((e) => OFF_EFFECT.test(e)) : undefined;
-      setTimeout(() => send({ action: "restore", state: off ? { ...before, effect: off } : before }), wait);
+      setTimeout(() => send({ action: "restore", state: off ? { ...before, effect: off } : before }), wait).unref();
     }
   }
 

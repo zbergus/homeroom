@@ -4,6 +4,7 @@ import formbody from "@fastify/formbody";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { type Config, loadConfig, securityNotes } from "./config.js";
 import type { Engine } from "./engine/engine.js";
 import type { Poller } from "./engine/poller.js";
 import { LEAGUES } from "./leagues.js";
@@ -14,6 +15,11 @@ import type { HaOutputs } from "./outputs/ha.js";
 import { supportsColor, type LightRules } from "./outputs/lights.js";
 import type { PusherHub } from "./outputs/pusher.js";
 import { HornService, hornWarnings } from "./audio/horns.js";
+import {
+  ABBR_RE, ActionListSchema, CalibrateBodySchema, DevicesSyncSchema, ExecuteBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
+  TriggerBodySchema, WsAuthBodySchema,
+} from "./schemas.js";
+import { errMsg, isCrossSite, RateLimiter, safeEq } from "./security.js";
 import { DATA_DIR, MEDIA_DIR, migrateAction } from "./store.js";
 import type { Game, LightAction, Settings } from "./types.js";
 
@@ -26,6 +32,8 @@ export interface Deps {
   dispatcher: Dispatcher;
   webDir: string;
   startedAt?: number;
+  /** defaults to `loadConfig()` (the process environment) */
+  config?: Config;
   /** override for tests (fake ffmpeg, temp cache dir) */
   horns?: HornService;
 }
@@ -36,7 +44,6 @@ const POLL_KEYS = ["enabled_leagues", "grid_leagues", "poll_idle_s", "poll_live_
 const redact = (s: Settings) => ({ ...s, ha: { url: s.ha.url, fire_rest_events: s.ha.fire_rest_events, token: "", token_set: !!s.ha.token } });
 
 const MAX_HORN_BYTES = 10 * 1024 * 1024;
-const ABBR_RE = /^[A-Za-z0-9]{1,8}$/;
 
 const bearer = (req: FastifyRequest): string | undefined => /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1];
 
@@ -44,12 +51,29 @@ function looksLikeMp3(b: Buffer): boolean {
   return b.length > 4 && ((b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0));
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** `payload` of POST /requests/execute: the integration sends the entity state as a JSON string (or, sometimes, an object) */
+function parsePayload(payload: string | Record<string, unknown> | undefined): Record<string, unknown> {
+  if (typeof payload !== "string") return payload ?? {};
+  try {
+    const v: unknown = JSON.parse(payload);
+    return isRecord(v) ? v : {};
+  } catch {
+    return {}; // an unreadable state is "no state", which only skips the restore
+  }
+}
+
+interface TeamRow { abbr: string; name: string; logo: string | undefined; options: unknown }
+
+const clampInt = (v: unknown, def: number, min: number, max: number): number => Math.min(max, Math.max(min, Math.trunc(Number(v)) || def));
+
 /**
  * Serve an MP3 with the same semantics as fastify-static: audio/mpeg, Accept-Ranges and 206/416 for Range (Cast and Sonos seek), conditional GET.
  * Horns are capped at 10 MB, so send Buffers: a hand-set Content-Length plus a stream left keep-alive sockets open and hung `app.close()`.
  */
-function sendAudio(req: FastifyRequest, reply: FastifyReply, file: string, etag: string) {
-  const st = fs.statSync(file);
+async function sendAudio(req: FastifyRequest, reply: FastifyReply, file: string, etag: string) {
+  const st = await fs.promises.stat(file);
   reply.header("Content-Type", "audio/mpeg").header("Accept-Ranges", "bytes").header("ETag", etag).header("Last-Modified", st.mtime.toUTCString()).header("Cache-Control", "public, max-age=0");
   if (req.headers["if-none-match"] === etag) return reply.code(304).send();
   const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? "").trim());
@@ -59,9 +83,9 @@ function sendAudio(req: FastifyRequest, reply: FastifyReply, file: string, etag:
     if (range[1] === "") { start = Math.max(0, st.size - Number(range[2])); end = st.size - 1; }
     else { start = Number(range[1]); end = range[2] === "" ? st.size - 1 : Math.min(Number(range[2]), st.size - 1); }
     if (start >= st.size || start > end) return reply.code(416).header("Content-Range", `bytes */${st.size}`).send();
-    return reply.code(206).header("Content-Range", `bytes ${start}-${end}/${st.size}`).send(fs.readFileSync(file).subarray(start, end + 1));
+    return reply.code(206).header("Content-Range", `bytes ${start}-${end}/${st.size}`).send((await fs.promises.readFile(file)).subarray(start, end + 1));
   }
-  return reply.send(fs.readFileSync(file));
+  return reply.send(await fs.promises.readFile(file));
 }
 
 export async function buildHttp(d: Deps): Promise<FastifyInstance> {
@@ -70,26 +94,57 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   const horns = d.horns ?? new HornService({ mediaDir: MEDIA_DIR, cacheDir: path.join(DATA_DIR, "cache", "horns"), settings: () => engine.settings });
   // pre-build processed horns in the background (production wiring only; tests inject their own service)
   const warmHorns = () => { if (!d.horns) void horns.warm(hornFileList()).catch(() => {}); };
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" } });
+  const config = d.config ?? loadConfig();
+  const app = Fastify({ logger: { level: config.logLevel } });
   await app.register(formbody);
   await app.register(multipart, { limits: { fileSize: MAX_HORN_BYTES, files: 1 } });
 
   // Optional shared secret for mutating control-plane calls (the integration endpoints use their own keys).
-  const admin = process.env.ADMIN_TOKEN;
+  const admin = config.adminToken;
+  const authFailures = new RateLimiter(20, 60_000);
+  const linkAttempts = new RateLimiter(10, 60_000);
+  const integrationCalls = new RateLimiter(600, 60_000);
+  const isRead = (m: string) => m === "GET" || m === "HEAD";
+
+  app.addHook("onSend", async (_req, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff").header("X-Frame-Options", "SAMEORIGIN").header("Referrer-Policy", "same-origin");
+  });
+
   app.addHook("onRequest", async (req, reply) => {
-    if (!admin || req.method === "GET" || req.method === "HEAD" || !req.url.startsWith("/api/")) return;
-    if (bearer(req) !== admin) return reply.code(401).send({ error: "ADMIN_TOKEN required" });
+    const api = req.url.startsWith("/api/");
+    // a page on another site must not be able to drive the control plane from a browser on this network
+    // (form posts and <img src=".../api/hook/..."> skip CORS preflight; the API does not use cookies, so this is the only guard)
+    if (api && (!isRead(req.method) || req.url.startsWith("/api/hook/")) && isCrossSite(req.headers, config.allowedOrigins)) {
+      return reply.code(403).send({ error: "cross-site request refused" });
+    }
+    // the API speaks JSON (horn uploads are multipart); urlencoded and text bodies are only for the integration routes
+    if (api && !isRead(req.method) && req.method !== "OPTIONS") {
+      const ct = (req.headers["content-type"] ?? "").toLowerCase();
+      const upload = req.method === "POST" && req.url.startsWith("/api/horns/") && ct.startsWith("multipart/form-data");
+      if (ct && !upload && !ct.startsWith("application/json")) return reply.code(415).send({ error: "content-type must be application/json" });
+    }
+    if (!admin || !api || isRead(req.method)) return;
+    if (authFailures.blocked(req.ip)) return reply.code(429).send({ error: "too many failed attempts, try again in a minute" });
+    if (!safeEq(bearer(req), admin)) {
+      authFailures.allow(req.ip);
+      return reply.code(401).send({ error: "ADMIN_TOKEN required" });
+    }
+  });
+
+  app.addHook("onRequest", async (req, reply) => {
+    if (!/^\/(integrations|auth|requests)\//.test(req.url)) return;
+    const limiter = req.url.startsWith("/integrations/home-assistant/link") ? linkAttempts : integrationCalls;
+    if (!limiter.allow(req.ip)) return reply.code(429).send({ error: "slow down" });
   });
 
   app.get("/healthz", async () => ({ ok: true, games: engine.games.size }));
 
   // ================= Home Assistant integration compatibility (see SPEC §1) =================
-  const onlyKey = process.env.HOMEROOM_API_KEY;
-
   app.post("/integrations/home-assistant/link", async (req) => {
     const key = bearer(req);
-    if (!key || (onlyKey && key !== onlyKey)) return { success: false };
+    if (!key || (config.haApiKey && !safeEq(key, config.haApiKey))) return { success: false };
     const l = store.link(key);
+    if (!l) return { success: false };
     return { success: true, unique_id: l.unique_id, websocket_key: l.websocket_key, integration_key: l.integration_key };
   });
 
@@ -97,38 +152,33 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const key = bearer(req);
     const l = key ? store.linkByApiKey(key) : undefined;
     if (!l) return { success: false };
-    const devices = ((req.body as { devices?: Record<string, unknown>[] })?.devices ?? []).filter((x) => x && typeof x === "object");
-    store.replaceDevices(l.integration_key, devices);
+    const body = DevicesSyncSchema.safeParse(req.body ?? {});
+    if (!body.success) return { success: false };
+    store.replaceDevices(l.integration_key, body.data.devices);
     return { success: true };
   });
 
   app.post("/auth/websockets", async (req, reply) => {
     const wsKey = req.headers["x-websocket-key"];
     const l = typeof wsKey === "string" ? store.linkByWebsocketKey(wsKey) : undefined;
-    const { socket_id, channel_name } = (req.body ?? {}) as { socket_id?: string; channel_name?: string };
-    const mine = l && [`private-${l.unique_id}`, `private-home-assistant.${l.integration_key}`];
-    if (!l || !socket_id || !channel_name || !mine!.includes(channel_name)) return reply.code(403).send({ error: "forbidden" });
+    const { socket_id, channel_name } = WsAuthBodySchema.safeParse(req.body ?? {}).data ?? {};
+    const mine = l ? [`private-${l.unique_id}`, `private-home-assistant.${l.integration_key}`] : [];
+    if (!l || !socket_id || !channel_name || !mine.includes(channel_name)) return reply.code(403).send({ error: "forbidden" });
     return { auth: hub.sign(socket_id, channel_name) };
   });
 
   app.post("/requests/execute", async (req) => {
     const key = bearer(req);
     if (!key || !store.linkByApiKey(key)) return { success: false };
-    const b = req.body as { request_id?: string; payload?: string };
-    let attrs: Record<string, unknown> = {};
-    try {
-      attrs = typeof b.payload === "string" ? JSON.parse(b.payload) : (b.payload ?? {});
-    } catch {
-      /* empty state */
-    }
-    return { success: !!b.request_id && lights.receiveState(b.request_id, attrs) };
+    const b = ExecuteBodySchema.safeParse(req.body ?? {}).data ?? {};
+    return { success: !!b.request_id && lights.receiveState(b.request_id, parsePayload(b.payload)) };
   });
 
   // ================= control plane =================
   app.get("/api/leagues", async () => LEAGUES.map(({ id, name, sport }) => ({ id, name, sport })));
 
   app.get("/api/schedule", async (req) => {
-    const days = Math.min(14, Math.max(1, Number((req.query as { days?: string }).days ?? 7) || 7));
+    const days = clampInt((req.query as { days?: unknown }).days, 7, 1, 14);
     const games = await poller.getSchedule(days);
     const byDate = new Map<string, Game[]>();
     for (const g of games) {
@@ -150,17 +200,11 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   };
   app.get("/api/sync", async () => syncState());
   app.put("/api/sync", async (req, reply) => {
-    const b = (req.body ?? {}) as { games?: string[]; favorites?: { league: string; abbr: string }[] };
-    if (b.games !== undefined) {
-      if (!Array.isArray(b.games) || b.games.some((g) => typeof g !== "string")) return reply.code(400).send({ error: "games must be string[]" });
-      store.setSyncedGames(b.games);
-    }
-    if (b.favorites !== undefined) {
-      if (!Array.isArray(b.favorites) || b.favorites.some((f) => !LEAGUES.some((l) => l.id === f?.league) || !ABBR_RE.test(f?.abbr ?? ""))) {
-        return reply.code(400).send({ error: "favorites must be {league, abbr}[]" });
-      }
-      store.setFavorites(b.favorites);
-    }
+    const parsed = SyncBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: firstIssue(parsed.error) });
+    const b = parsed.data;
+    if (b.games !== undefined) store.setSyncedGames(b.games);
+    if (b.favorites !== undefined) store.setFavorites(b.favorites);
     engine.invalidateSync();
     poller.poke();
     return syncState();
@@ -168,20 +212,21 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
 
   app.get("/api/settings", async () => redact(engine.settings));
   app.put("/api/settings", async (req, reply) => {
-    const patch = (req.body ?? {}) as Partial<Settings>;
-    if (patch.ha) {
+    const body: Record<string, unknown> = isRecord(req.body) ? { ...req.body } : {};
+    if (isRecord(body.ha)) {
       // the token is write-only: an empty/missing value keeps the stored one, `clear_token` removes it
-      const { clear_token, ...rest } = patch.ha as Record<string, unknown>;
-      if (clear_token) rest.token = "";
+      const { clear_token, ...rest } = body.ha;
+      if (clear_token === true) rest.token = "";
       else if (!rest.token) delete rest.token;
-      patch.ha = rest as Settings["ha"];
+      body.ha = rest;
     }
     const before = engine.settings;
-    const err = store.patchSettings(patch);
+    const err = store.patchSettings(body);
     if (err) return reply.code(400).send({ error: err });
     engine.invalidateSettings();
-    if (patch.horn_max_s !== undefined || patch.horn_fade_ms !== undefined || patch.horn_normalize !== undefined) warmHorns();
-    if (patch.auto_sync_favorites !== undefined || patch.sync_excluded !== undefined) engine.invalidateSync();
+    const touched = (...keys: string[]) => keys.some((k) => body[k] !== undefined);
+    if (touched("horn_max_s", "horn_fade_ms", "horn_normalize")) warmHorns();
+    if (touched("auto_sync_favorites", "sync_excluded")) engine.invalidateSync();
     const after = engine.settings;
     if (POLL_KEYS.some((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))) poller.poke();
     return redact(after);
@@ -196,15 +241,15 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
 
   /** "I see 2nd period 12:50 on my TV": how far behind the live feed is it? */
   app.post("/api/calibrate", async (req, reply) => {
-    const b = (req.body ?? {}) as { game_id?: string; tv_period?: number; tv_clock?: string };
+    const b = CalibrateBodySchema.safeParse(req.body ?? {}).data ?? {};
     const g = b.game_id ? engine.games.get(b.game_id) : undefined;
     if (!g) return reply.code(404).send({ error: "unknown game" });
     const tv = parseClock(b.tv_clock ?? "");
-    if (tv === undefined || !Number.isInteger(b.tv_period) || (b.tv_period as number) < 1) return reply.code(400).send({ error: "tv_period (1..) and tv_clock (M:SS) are required" });
+    if (tv === undefined || b.tv_period === undefined || !Number.isInteger(b.tv_period) || b.tv_period < 1) return reply.code(400).send({ error: "tv_period (1..) and tv_clock (M:SS) are required" });
     if (g.status !== "in" || g.clock_s === undefined || !g.clock_dir) return reply.code(409).send({ error: "this game has no live clock to compare against" });
     return suggestDelay(
       { league: g.league, period: g.period, clock_s: g.clock_s, clock_running: !!g.clock_running, clock_dir: g.clock_dir, age_s: engine.rawAgeS(g.id) },
-      { period: b.tv_period as number, clock_s: tv },
+      { period: b.tv_period, clock_s: tv },
     );
   });
 
@@ -215,25 +260,30 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   };
 
   app.post("/api/trigger", async (req) => {
-    const b = (req.body ?? {}) as { trigger?: string; league?: string; team_abbr?: string; game_id?: string; apply_delay?: boolean };
-    return { ok: true, event: fire(b) };
+    return { ok: true, event: fire(TriggerBodySchema.safeParse(req.body ?? {}).data ?? {}) };
   });
 
   // For Stream Deck / HA rest_command / physical buttons that can only issue a GET.
   // Side effects on GET are normally avoided, so this one demands the admin token whenever one is configured.
   app.get("/api/hook/:trigger", async (req, reply) => {
-    const q = req.query as { league?: string; team?: string; game?: string; delay?: string; token?: string };
-    if (admin && bearer(req) !== admin && q.token !== admin) return reply.code(401).send({ error: "token required" });
+    const q = HookQuerySchema.safeParse(req.query ?? {}).data ?? {};
+    if (admin) {
+      if (authFailures.blocked(req.ip)) return reply.code(429).send({ error: "too many failed attempts, try again in a minute" });
+      if (!safeEq(bearer(req), admin) && !safeEq(q.token, admin)) {
+        authFailures.allow(req.ip);
+        return reply.code(401).send({ error: "token required" });
+      }
+    }
     const ev = fire({ trigger: (req.params as { trigger: string }).trigger, league: q.league, team_abbr: q.team, game_id: q.game, apply_delay: q.delay === "1" });
     return { ok: true, event_id: ev.event_id, type: ev.type };
   });
 
   app.post("/api/test/goal", async (req) => {
-    const b = (req.body ?? {}) as { league?: string; team_abbr?: string; bypass_delay?: boolean };
+    const b = TriggerBodySchema.safeParse(req.body ?? {}).data ?? {};
     return { ok: true, event: fire({ trigger: "goal", league: b.league, team_abbr: b.team_abbr, apply_delay: b.bypass_delay === false }) };
   });
 
-  app.get("/api/events/recent", async (req) => dispatcher.log.recent(Math.min(100, Number((req.query as { n?: string }).n) || 50)));
+  app.get("/api/events/recent", async (req) => dispatcher.log.recent(clampInt((req.query as { n?: unknown }).n, 50, 1, 100)));
 
   let hornCheck: { at: number; ok: boolean | null; detail: string } | undefined;
   const checkHornUrl = async () => {
@@ -249,10 +299,10 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     else if (!file) hornCheck = { at: Date.now(), ok: null, detail: "no horn files uploaded yet" };
     else {
       try {
-        const r = await fetch(`${base}/media/horns/${file}`, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+        const r = await fetch(`${base}/media/horns/${file}`, { method: "HEAD", redirect: "error", signal: AbortSignal.timeout(3000) });
         hornCheck = { at: Date.now(), ok: r.ok, detail: r.ok ? `${base}/media/horns/${file} is reachable from the server` : `HTTP ${r.status} for ${base}/media/horns/${file}` };
       } catch (e) {
-        hornCheck = { at: Date.now(), ok: false, detail: `cannot fetch ${base}: ${(e as Error).message}` };
+        hornCheck = { at: Date.now(), ok: false, detail: `cannot fetch ${base}: ${errMsg(e)}` };
       }
     }
     return hornCheck;
@@ -282,6 +332,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     if (horn.ok === false) warnings.push(`Horn URL check failed: ${horn.detail}`);
     warnings.push(...hornWarnings(durations, s, audioMode));
     warnings.push(...poller.providerWarnings());
+    warnings.push(...securityNotes(config));
     if (!s.automations_enabled) warnings.push("Automations are disabled: only manual triggers fire.");
     const known = new Set(devices.map((d) => d.entity_id));
     const missing = store.getActions().flatMap((a) => a.entities).filter((e) => !known.has(e));
@@ -305,12 +356,12 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   app.get("/api/teams/:league", async (req, reply) => {
     const { league } = req.params as { league: string };
     if (!LEAGUES.some((l) => l.id === league)) return reply.code(404).send({ error: "unknown league" });
-    const seen = new Map<string, unknown>();
+    const seen = new Map<string, TeamRow>();
     for (const g of [...engine.games.values(), ...(await poller.getSchedule(7))]) {
       if (g.league !== league) continue;
       for (const t of [g.home, g.away]) seen.set(t.abbr, { abbr: t.abbr, name: t.display_name, logo: t.logo, options: t.options });
     }
-    return [...seen.values()].sort((a: any, b: any) => a.name.localeCompare(b.name));
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   });
 
   app.get("/api/teams/:league/:abbr", async (req) => {
@@ -320,14 +371,9 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   app.put("/api/teams/:league/:abbr", async (req, reply) => {
     const { league, abbr } = req.params as { league: string; abbr: string };
     if (!LEAGUES.some((l) => l.id === league) || !ABBR_RE.test(abbr)) return reply.code(400).send({ error: "bad league/abbr" });
-    const b = (req.body ?? {}) as Record<string, { r: number; g: number; b: number }>;
-    const clean: Record<string, unknown> = {};
-    for (const k of ["primary_color_rgb", "secondary_color_rgb", "alternate_color_rgb"]) {
-      const c = b[k];
-      if (!c) continue;
-      if (![c.r, c.g, c.b].every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) return reply.code(400).send({ error: `${k} must be {r,g,b} 0-255` });
-      clean[k] = { r: c.r, g: c.g, b: c.b };
-    }
+    const parsed = TeamOverrideSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: `${firstIssue(parsed.error)} (colours are {r,g,b} 0-255)` });
+    const clean = parsed.data;
     store.setTeamOverride(league, abbr, clean);
     engine.invalidateOverrides();
     return clean;
@@ -336,19 +382,14 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   app.get("/api/devices", async () => store.getDevices().map((d) => ({ ...d, supports_color: supportsColor(d) })));
   app.get("/api/actions", async () => store.getActions());
   app.put("/api/actions", async (req, reply) => {
-    const list = req.body as LightAction[];
-    if (!Array.isArray(list)) return reply.code(400).send({ error: "body must be an array of actions" });
+    const parsed = ActionListSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: `invalid actions: ${firstIssue(parsed.error)}` });
     const out: LightAction[] = [];
-    for (const raw of list) {
+    for (const raw of parsed.data) {
       const a = migrateAction(raw);
-      if (!a.id || !Array.isArray(a.triggers) || a.triggers.some((t) => !isTriggerId(t)) || !["flash", "alternate", "set_color", "light_effect"].includes(a.effect) || !Array.isArray(a.entities)) {
-        return reply.code(400).send({ error: `invalid action ${a?.id ?? "?"}` });
-      }
-      if (a.effect === "light_effect" && (typeof a.light_effect !== "string" || !a.light_effect.trim())) {
-        return reply.code(400).send({ error: `action ${a.id}: light_effect needs the effect name` });
-      }
-      a.duration = Math.min(300, Math.max(0.5, Number(a.duration) || 3));
-      a.speed = Math.min(10, Math.max(1, Math.round(Number(a.speed) || 5)));
+      if (a.effect === "light_effect" && !a.light_effect?.trim()) return reply.code(400).send({ error: `action ${a.id}: light_effect needs the effect name` });
+      a.duration = Math.min(300, Math.max(0.5, a.duration || 3));
+      a.speed = Math.min(10, Math.max(1, Math.round(a.speed || 5)));
       out.push(a);
     }
     store.setActions(out);
@@ -391,8 +432,8 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const buf = await file.toBuffer(); // throws on > MAX_HORN_BYTES
     if (file.file.truncated) return reply.code(413).send({ error: "file too large (10 MB max)" });
     if (!looksLikeMp3(buf)) return reply.code(415).send({ error: "not an MP3 file" });
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, buf);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, buf);
     warmHorns();
     return { ok: true, size: buf.length };
   });
@@ -414,13 +455,13 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     if (!m || !LEAGUES.some((l) => l.id === league)) return reply.code(404).send({ error: "not found" });
     const r = await horns.resolve(league, m[1]);
     if (!r) return reply.code(404).send({ error: "not found" });
-    try { return sendAudio(req, reply, r.file, r.etag); }
+    try { return await sendAudio(req, reply, r.file, r.etag); }
     catch (e) {
       // the processed file vanished between resolve and send: the original is always a valid answer
       const orig = horns.sourcePath(league, m[1]);
       if (!r.processed || !fs.existsSync(orig)) throw e;
       const st = fs.statSync(orig);
-      return sendAudio(req, reply, orig, `W/"${st.size}-${Math.round(st.mtimeMs)}"`);
+      return await sendAudio(req, reply, orig, `W/"${st.size}-${Math.round(st.mtimeMs)}"`);
     }
   });
   await app.register(fastifyStatic, { root: MEDIA_DIR, prefix: "/media/", decorateReply: false, index: false });

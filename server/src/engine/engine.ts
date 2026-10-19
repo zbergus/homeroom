@@ -70,7 +70,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.fetchSummary = deps.fetchSummary ?? fetchSummary;
     this.buildInsight = deps.buildInsight ?? ((g) => buildInsight(g));
     this.retryMs = deps.retryMs ?? 1500;
-    this.restoreGraceMs = deps.restoreGraceMs ?? (Number(process.env.HOMEROOM_RESTORE_GRACE_S ?? 10) || 10) * 1000;
+    this.restoreGraceMs = deps.restoreGraceMs ?? 10_000;
     this.buffer = new DelayBuffer<Out>((o) => this.release(o), now);
   }
 

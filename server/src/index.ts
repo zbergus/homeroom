@@ -1,21 +1,29 @@
-import path from "node:path";
 import { createApp } from "./app.js";
+import { loadConfig, securityNotes } from "./config.js";
 
-const PORT = Number(process.env.PORT ?? 8080);
-const APP_KEY = process.env.PUSHER_APP_KEY ?? "homeroom-local-key";
-const APP_SECRET = process.env.PUSHER_APP_SECRET ?? "homeroom-local-secret";
-const WEB_DIR = process.env.WEB_DIR ?? path.resolve("../web/dist");
+const config = loadConfig();
+for (const note of securityNotes(config)) console.warn(`[homeroom] ${note}`);
 
-if (APP_SECRET === "homeroom-local-secret") {
-  console.warn("[homeroom] PUSHER_APP_SECRET is the default; fine on a trusted LAN, change it otherwise.");
-}
+const app = await createApp({ appKey: config.appKey, appSecret: config.appSecret, webDir: config.webDir, port: config.port, startPoller: true, config });
+console.log(`[homeroom] listening on :${app.port}  (pusher app key: ${config.appKey})`);
 
-const app = await createApp({ appKey: APP_KEY, appSecret: APP_SECRET, webDir: WEB_DIR, port: PORT, startPoller: true });
-console.log(`[homeroom] listening on :${app.port}  (pusher app key: ${APP_KEY})`);
-
-const shutdown = async () => {
-  await app.close();
-  process.exit(0);
+const FORCE_EXIT_MS = 10_000;
+let stopping = false;
+const shutdown = async (signal: string) => {
+  if (stopping) return;
+  stopping = true;
+  console.log(`[homeroom] ${signal}: shutting down`);
+  // a stuck keep-alive socket must not keep a container from restarting
+  setTimeout(() => process.exit(1), FORCE_EXIT_MS).unref();
+  try {
+    await app.close();
+    process.exit(0);
+  } catch (err) {
+    console.error("[homeroom] shutdown failed:", err);
+    process.exit(1);
+  }
 };
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+// a rejected promise nobody awaited is a bug to surface, not a reason to take the lights and horn down with it
+process.on("unhandledRejection", (reason) => console.error("[homeroom] unhandled rejection:", reason));

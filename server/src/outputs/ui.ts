@@ -4,14 +4,21 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { Engine } from "../engine/engine.js";
 import type { EventPayload, Game } from "../types.js";
 
+const MAX_FRAME_BYTES = 4 * 1024;
+const MAX_VIEWS = 200;
+
 /** Pushes already-delayed state/events to the browser views (control, scoreboard, grid, ticker). */
 export class UiHub {
-  private wss = new WebSocketServer({ noServer: true });
+  private wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
   private views = new Map<WebSocket, string>();
   private heartbeat: ReturnType<typeof setInterval>;
 
   constructor(private engine: Engine) {
     this.wss.on("connection", (ws) => {
+      if (this.views.size >= MAX_VIEWS) {
+        ws.close(1013, "too many connections");
+        return;
+      }
       this.views.set(ws, "unknown");
       ws.on("close", () => this.views.delete(ws));
       ws.on("error", () => this.views.delete(ws));
