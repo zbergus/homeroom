@@ -15,7 +15,7 @@ export function useSync(ms = 30_000): SyncState | null {
   useEffect(() => {
     let dead = false;
     const load = () => api.sync().then((s) => !dead && setSync(s)).catch(() => undefined); // keep the last good value on a failed refresh
-    load();
+    void load();
     const i = setInterval(load, ms);
     return () => { dead = true; clearInterval(i); };
   }, [ms]);
@@ -29,7 +29,7 @@ export function useNextMine(sync: SyncState | null, enabled = true): GameLite | 
     if (!enabled) return;
     let dead = false;
     const load = () => api.schedule(7).then((s) => !dead && setDays(s.days)).catch(() => undefined);
-    load();
+    void load();
     const i = setInterval(load, 5 * 60_000);
     return () => { dead = true; clearInterval(i); };
   }, [enabled]);
