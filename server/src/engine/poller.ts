@@ -262,7 +262,9 @@ export class Poller {
     let next = 0;
     const worker = async () => {
       while (next < jobs.length) {
-        const { l, d } = jobs[next++];
+        const job = jobs[next++];
+        if (!job) break;
+        const { l, d } = job;
         const key = `${l}:${d}`;
         let games = this.scheduleCache.get(key);
         if (!games || Date.now() - games.at >= SCHEDULE_TTL_MS) {

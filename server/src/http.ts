@@ -31,11 +31,11 @@ interface Deps {
   ha: HaOutputs;
   dispatcher: Dispatcher;
   webDir: string;
-  startedAt?: number;
+  startedAt?: number | undefined;
   /** defaults to `loadConfig()` (the process environment) */
-  config?: Config;
+  config?: Config | undefined;
   /** override for tests (fake ffmpeg, temp cache dir) */
-  horns?: HornService;
+  horns?: HornService | undefined;
 }
 
 /** keys whose change means the pollers must re-plan (everything else, e.g. the delay slider, must not re-poll) */
@@ -48,7 +48,9 @@ const MAX_HORN_BYTES = 10 * 1024 * 1024;
 const bearer = (req: FastifyRequest): string | undefined => /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1];
 
 function looksLikeMp3(b: Buffer): boolean {
-  return b.length > 4 && ((b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0));
+  if (b.length <= 4) return false;
+  const [b0, b1, b2] = [b.readUInt8(0), b.readUInt8(1), b.readUInt8(2)];
+  return (b0 === 0x49 && b1 === 0x44 && b2 === 0x33) || (b0 === 0xff && (b1 & 0xe0) === 0xe0); // "ID3" tag, or an MPEG frame sync
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -178,7 +180,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   app.get("/api/leagues", async () => LEAGUES.map(({ id, name, sport }) => ({ id, name, sport })));
 
   app.get("/api/schedule", async (req) => {
-    const days = clampInt((req.query as { days?: unknown }).days, 7, 1, 14);
+    const days = clampInt((req.query as { days?: unknown | undefined }).days, 7, 1, 14);
     const games = await poller.getSchedule(days);
     const byDate = new Map<string, Game[]>();
     for (const g of games) {
@@ -253,7 +255,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     );
   });
 
-  const fire = (o: { trigger?: string; league?: string; team_abbr?: string; game_id?: string; apply_delay?: boolean }) => {
+  const fire = (o: { trigger?: string | undefined; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined }) => {
     if (o.trigger && !isTriggerId(o.trigger)) throw Object.assign(new Error(`unknown trigger "${o.trigger}"`), { statusCode: 400 });
     if (o.league && !LEAGUES.some((l) => l.id === o.league)) throw Object.assign(new Error("unknown league"), { statusCode: 400 });
     return engine.fireTrigger(o);
@@ -283,7 +285,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return { ok: true, event: fire({ trigger: "goal", league: b.league, team_abbr: b.team_abbr, apply_delay: b.bypass_delay === false }) };
   });
 
-  app.get("/api/events/recent", async (req) => dispatcher.log.recent(clampInt((req.query as { n?: unknown }).n, 50, 1, 100)));
+  app.get("/api/events/recent", async (req) => dispatcher.log.recent(clampInt((req.query as { n?: unknown | undefined }).n, 50, 1, 100)));
 
   let hornCheck: { at: number; ok: boolean | null; detail: string } | undefined;
   const checkHornUrl = async () => {
@@ -452,13 +454,14 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   app.get("/media/horns/:league/:file", async (req, reply) => {
     const { league, file } = req.params as { league: string; file: string };
     const m = /^(default|[A-Za-z0-9]{1,8})\.mp3$/.exec(file);
-    if (!m || !LEAGUES.some((l) => l.id === league)) return reply.code(404).send({ error: "not found" });
-    const r = await horns.resolve(league, m[1]);
+    const abbr = m?.[1];
+    if (!abbr || !LEAGUES.some((l) => l.id === league)) return reply.code(404).send({ error: "not found" });
+    const r = await horns.resolve(league, abbr);
     if (!r) return reply.code(404).send({ error: "not found" });
     try { return await sendAudio(req, reply, r.file, r.etag); }
     catch (e) {
       // the processed file vanished between resolve and send: the original is always a valid answer
-      const orig = horns.sourcePath(league, m[1]);
+      const orig = horns.sourcePath(league, abbr);
       if (!r.processed || !fs.existsSync(orig)) throw e;
       const st = fs.statSync(orig);
       return await sendAudio(req, reply, orig, `W/"${st.size}-${Math.round(st.mtimeMs)}"`);

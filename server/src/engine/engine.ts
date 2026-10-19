@@ -44,9 +44,9 @@ export class Engine extends EventEmitter<EngineEvents> {
   private chains = new Map<string, Promise<void>>();
   private nhlSeen = new Map<string, number>();
   private lastDecrease = new Map<string, { home: number; away: number; at: number }>();
-  private settingsCache?: Settings;
-  private synced?: Set<string>;
-  private favs?: Set<string>;
+  private settingsCache?: Settings | undefined;
+  private synced?: Set<string> | undefined;
+  private favs?: Set<string> | undefined;
   private updatedAt = new Map<string, number>();
   private ppLast = new Map<string, number>();
   private goalTimes = new Map<string, { abbr: string; at: number }[]>();
@@ -65,7 +65,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   constructor(
     readonly store: Store,
     private now: () => number = () => Date.now(),
-    deps: { fetchSummary?: typeof fetchSummary; buildInsight?: (g: Game) => Promise<Insight | undefined>; retryMs?: number; restoreGraceMs?: number } = {},
+    deps: { fetchSummary?: typeof fetchSummary | undefined; buildInsight?: (g: Game) => Promise<Insight | undefined>; retryMs?: number | undefined; restoreGraceMs?: number | undefined } = {},
   ) {
     super();
     this.fetchSummary = deps.fetchSummary ?? fetchSummary;
@@ -112,7 +112,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   /** resolves by_game ?? by_league ?? global */
   delayMs(gameId: string): number {
     const s = this.settings;
-    const league = gameId.split(":")[0];
+    const league = gameId.split(":")[0] ?? "";
     return Math.round((s.delay_by_game[gameId] ?? s.delay_by_league[league] ?? s.delay_global_s) * 1000);
   }
 
@@ -320,7 +320,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   buildEvent(
     type: BuildType,
     game: Game,
-    o: { team?: Team; delta?: number; play?: ScoringPlay; period?: number; test?: boolean; incident?: { kind: "yellow" | "red"; player?: string; clock: string } } = {},
+    o: { team?: Team | undefined; delta?: number | undefined; play?: ScoringPlay | undefined; period?: number | undefined; test?: boolean | undefined; incident?: { kind: "yellow" | "red"; player?: string | undefined; clock: string } | undefined } = {},
   ): EventPayload {
     const payload: EventPayload = {
       event_id: `evt_${randomUUID()}`,
@@ -411,7 +411,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!g) return;
     const goals = s.plays.length >= g.goals.length ? s.plays : g.goals;
     const stat_rows = s.rows.length ? s.rows : g.stat_rows;
-    const sameGoals = goals.length === g.goals.length && goals.every((p, i) => p.key === g.goals[i].key && p.scorer === g.goals[i].scorer);
+    const sameGoals = goals.length === g.goals.length && goals.every((p, i) => p.key === g.goals[i]?.key && p.scorer === g.goals[i]?.scorer);
     const sameRows = JSON.stringify(stat_rows) === JSON.stringify(g.stat_rows);
     if (sameGoals && sameRows) return; // nothing new: do not push an identical snapshot to every screen
     this.setGame({ ...g, goals, stat_rows });
@@ -459,7 +459,7 @@ export class Engine extends EventEmitter<EngineEvents> {
    * Manual events bypass the automation gates. Default is immediate: a person pressing a button has
    * already seen the play on their screen. `apply_delay` routes it through the stream-sync buffer.
    */
-  fireTrigger(opts: { trigger?: string; league?: string; team_abbr?: string; game_id?: string; apply_delay?: boolean } = {}): EventPayload {
+  fireTrigger(opts: { trigger?: string | undefined; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined } = {}): EventPayload {
     const trigger = opts.trigger ?? "goal";
     const spec = MANUAL_SPECS[trigger];
     if (!spec) throw new Error(`unknown trigger "${trigger}"`);
@@ -496,7 +496,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   /** @deprecated kept for the existing /api/test/goal callers */
-  fireTest(opts: { league?: string; team_abbr?: string; bypass_delay?: boolean } = {}): EventPayload {
+  fireTest(opts: { league?: string | undefined; team_abbr?: string | undefined; bypass_delay?: boolean | undefined } = {}): EventPayload {
     return this.fireTrigger({ trigger: "goal", league: opts.league, team_abbr: opts.team_abbr, apply_delay: opts.bypass_delay === false });
   }
 

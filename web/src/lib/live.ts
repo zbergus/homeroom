@@ -6,8 +6,8 @@ export type ConnState = "connecting" | "open" | "closed" | "mock";
 interface Snap {
   games: Map<string, Game>;
   conn: ConnState;
-  settings?: Settings;
-  lastEvent?: EventPayload;
+  settings?: Settings | undefined;
+  lastEvent?: EventPayload | undefined;
 }
 
 export const isMockUrl = () => new URLSearchParams(location.search).get("mock") === "1";

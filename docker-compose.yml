@@ -7,6 +7,9 @@ services:
     image: homeroom:local
     container_name: homeroom
     restart: unless-stopped
+    # nothing in the app needs privileges: it listens on 8080 and writes only to the two volumes below
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     ports:
       - "${PORT:-8080}:8080"
     environment:
@@ -20,6 +23,8 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       # optional: only this API key may link a Home Assistant install
       HOMEROOM_API_KEY: ${HOMEROOM_API_KEY:-}
+      # optional: browser origins besides this server that may call the API (host[:port], comma separated)
+      HOMEROOM_ALLOWED_ORIGINS: ${HOMEROOM_ALLOWED_ORIGINS:-}
     volumes:
       - ./data:/data     # SQLite database + settings (persistent)
       - ./media:/media   # goal horns: media/horns/<league>/<ABBR>.mp3 (persistent, also uploadable in the UI)

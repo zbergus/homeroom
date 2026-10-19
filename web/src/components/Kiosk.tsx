@@ -7,7 +7,7 @@ import { teamColors } from "../lib/format";
  * Round team badge. `plain` draws the logo with no disc behind it (hero / banners) and falls back
  * to an initials disc; `ring` is the fallback disc colour (defaults to the team's solo colour).
  */
-export function TeamBadge({ team, size, className = "", plain = false, ring }: { team: Team; size: string; className?: string; plain?: boolean; ring?: string }) {
+export function TeamBadge({ team, size, className = "", plain = false, ring }: { team: Team; size: string; className?: string | undefined; plain?: boolean | undefined; ring?: string | undefined }) {
   const [bad, setBad] = useState(false);
   const { primary } = teamColors(team);
   const logo = team.logo && !bad ? team.logo : undefined;

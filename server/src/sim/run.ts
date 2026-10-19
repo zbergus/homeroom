@@ -21,10 +21,11 @@ import { fileURLToPath } from "node:url";
 function parseArgs(argv: string[]) {
   const o: Record<string, string[]> = {};
   for (let i = 0; i < argv.length; i++) {
-    if (!argv[i].startsWith("--")) continue;
-    const k = argv[i].slice(2);
+    const arg = argv[i];
+    if (!arg?.startsWith("--")) continue;
+    const k = arg.slice(2);
     const next = argv[i + 1];
-    const v = next === undefined || next.startsWith("--") ? "true" : argv[++i];
+    const v = next === undefined || next.startsWith("--") ? "true" : (argv[++i] ?? "true");
     (o[k] ??= []).push(v);
   }
   return o;
@@ -71,7 +72,7 @@ const games = gameSpecs.map((s) => {
 if (a.phantom?.at(-1)) {
   const [at, side, hold] = a.phantom.at(-1)!.split(":");
   if (side !== "home" && side !== "away") throw new Error("--phantom <seconds>:<home|away>[:<hold seconds>]");
-  games[0].setPhantom(Number(at), side, Number(hold ?? 45));
+  games[0]?.setPhantom(Number(at), side, Number(hold ?? 45));
   console.log(`[sim] phantom (to-be-overturned) goal for ${side} at virtual ${at}s, held ${hold ?? 45}s`);
 }
 

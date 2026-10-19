@@ -11,7 +11,7 @@ const isWhite = (d: Device) => d.supports_color === false;
 function commonEffects(sel: Device[]): string[] {
   if (sel.length === 0) return [];
   const lists = sel.map((d) => d.capabilities?.effect_list ?? []);
-  return lists[0].filter((e) => lists.every((l) => l.includes(e)));
+  return (lists[0] ?? []).filter((e) => lists.every((l) => l.includes(e)));
 }
 
 export function validateAction(a: LightAction, devices: Device[]): string[] {

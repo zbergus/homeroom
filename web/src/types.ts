@@ -4,9 +4,9 @@
 export type RGB = { r: number; g: number; b: number };
 
 interface TeamOptions {
-  primary_color_rgb?: RGB;
-  secondary_color_rgb?: RGB;
-  alternate_color_rgb?: RGB;
+  primary_color_rgb?: RGB | undefined;
+  secondary_color_rgb?: RGB | undefined;
+  alternate_color_rgb?: RGB | undefined;
 }
 
 export interface Team {
@@ -14,11 +14,11 @@ export interface Team {
   abbr: string;
   name: string;
   display_name: string;
-  logo?: string;
-  score?: number;
+  logo?: string | undefined;
+  score?: number | undefined;
   /** overall record as ESPN prints it, e.g. "4-3-1" */
-  record?: string;
-  options?: TeamOptions;
+  record?: string | undefined;
+  options?: TeamOptions | undefined;
 }
 
 type GameStatus = "pre" | "in" | "post";
@@ -27,16 +27,16 @@ export type StatValue = number | string;
 
 /** One scoring play inside Game.goals (shape assumed; SPEC only names "ScoringPlay"). */
 export interface ScoringPlay {
-  key?: string;
+  key?: string | undefined;
   period: number;
-  period_label?: string;
-  clock?: string;
-  team_abbr?: string;
-  team_id?: string;
-  scorer?: string;
-  assists?: string[];
-  strength?: "ev" | "pp" | "sh" | "en" | string; // server normalises to ev | pp | sh | en
-  tags?: string[];
+  period_label?: string | undefined;
+  clock?: string | undefined;
+  team_abbr?: string | undefined;
+  team_id?: string | undefined;
+  scorer?: string | undefined;
+  assists?: string[] | undefined;
+  strength?: "ev" | "pp" | "sh" | "en" | string | undefined; // server normalises to ev | pp | sh | en
+  tags?: string[] | undefined;
   home_score: number;
   away_score: number;
 }
@@ -49,12 +49,12 @@ export interface StatRow {
   away: string;
   home_n: number;
   away_n: number;
-  lower_is_better?: boolean;
+  lower_is_better?: boolean | undefined;
 }
 
 export interface FormGame {
   opp_abbr: string;
-  opp_logo?: string;
+  opp_logo?: string | undefined;
   venue: "H" | "A";
   gf: number;
   ga: number;
@@ -63,7 +63,7 @@ export interface FormGame {
 }
 
 export interface TeamForm {
-  record?: string;
+  record?: string | undefined;
   /** oldest first, up to 10 */
   games: FormGame[];
 }
@@ -73,9 +73,9 @@ export interface PlayerWatch {
   name: string;
   first: string;
   last: string;
-  jersey?: string;
-  position?: string;
-  headshot?: string;
+  jersey?: string | undefined;
+  position?: string | undefined;
+  headshot?: string | undefined;
   team_abbr: string;
   tiles: { label: string; value: string }[];
   /** oldest first; `value` is the plotted number */
@@ -86,7 +86,7 @@ export interface PlayerWatch {
 /** Context for break screens and the scoreboard side panel. Every part is optional: hide what is missing. */
 export interface Insight {
   form?: { home: TeamForm; away: TeamForm; rows: StatRow[] };
-  players?: { home?: PlayerWatch; away?: PlayerWatch };
+  players?: { home?: PlayerWatch | undefined; away?: PlayerWatch | undefined };
   updated_at: number;
 }
 
@@ -100,9 +100,9 @@ export interface Game {
   period_label: string;
   clock: string;
   /** numeric clock for client-side interpolation between updates */
-  clock_s?: number;
-  clock_running?: boolean;
-  clock_dir?: "down" | "up";
+  clock_s?: number | undefined;
+  clock_running?: boolean | undefined;
+  clock_dir?: "down" | "up" | undefined;
   intermission: boolean;
   home: Team;
   away: Team;
@@ -110,9 +110,9 @@ export interface Game {
   stats: { home: Record<string, StatValue>; away: Record<string, StatValue> };
   goals: ScoringPlay[];
   /** canonical comparison rows from the boxscore; prefer over `stats` when present */
-  stat_rows?: StatRow[];
-  insight?: Insight;
-  odds?: unknown;
+  stat_rows?: StatRow[] | undefined;
+  insight?: Insight | undefined;
+  odds?: unknown | undefined;
 }
 
 /** /api/schedule row (assumed: Game fields, possibly without live detail). */
@@ -125,9 +125,9 @@ type UiEventType = EventType | "goal_overturned";
 
 export interface Scoring {
   label: string;
-  scorer?: string;
-  assists?: string[];
-  strength?: string;
+  scorer?: string | undefined;
+  assists?: string[] | undefined;
+  strength?: string | undefined;
   delta: number;
   home_score: number;
   away_score: number;
@@ -141,17 +141,17 @@ export interface EventPayload {
   league: string;
   sport: string;
   game: Pick<Game, "id" | "status" | "period" | "period_label" | "clock" | "home" | "away">;
-  team?: Team;
-  scoring?: Scoring;
-  natural_text?: string;
-  goal_horn?: string;
+  team?: Team | undefined;
+  scoring?: Scoring | undefined;
+  natural_text?: string | undefined;
+  goal_horn?: string | undefined;
 }
 
 export interface League {
   id: string;
   name: string;
-  sport?: string;
-  enabled?: boolean;
+  sport?: string | undefined;
+  enabled?: boolean | undefined;
 }
 
 export interface TeamRef { league: string; abbr: string }
@@ -161,52 +161,52 @@ export interface SyncState {
   games: string[];
   favorites: TeamRef[];
   /** games that actually fire: ticked + auto-synced favourites, minus exclusions */
-  effective?: string[];
+  effective?: string[] | undefined;
 }
 
-export interface TeamInfo { abbr: string; name: string; logo?: string; options?: TeamOptions }
+export interface TeamInfo { abbr: string; name: string; logo?: string | undefined; options?: TeamOptions | undefined }
 
 export interface HASettings {
   url: string;
   /** write-only: the server never returns it ("" on read) */
   token: string;
-  token_set?: boolean;
+  token_set?: boolean | undefined;
   fire_rest_events: boolean;
 }
 
 export interface Settings {
   delay_global_s: number;
   delay_by_game: Record<string, number>;
-  delay_by_league?: Record<string, number>;
-  poll_idle_s?: number;
-  poll_live_s?: number;
-  nhl_fast_poll_ms?: number;
+  delay_by_league?: Record<string, number> | undefined;
+  poll_idle_s?: number | undefined;
+  poll_live_s?: number | undefined;
+  nhl_fast_poll_ms?: number | undefined;
   ha: HASettings;
-  enabled_leagues?: string[];
-  grid_leagues?: string[];
+  enabled_leagues?: string[] | undefined;
+  grid_leagues?: string[] | undefined;
   public_base_url: string;
-  horn_scope?: "favorites" | "all" | "home";
+  horn_scope?: "favorites" | "all" | "home" | undefined;
   /** longest horn that plays, seconds (2..120); null = no limit */
-  horn_max_s?: number | null;
+  horn_max_s?: number | null | undefined;
   /** fade-out at the trim point, ms (0..5000); needs ffmpeg */
-  horn_fade_ms?: number;
+  horn_fade_ms?: number | undefined;
   /** loudness-normalise horns; needs ffmpeg */
-  horn_normalize?: boolean;
-  tts_enabled?: boolean;
-  my_team_only?: boolean;
-  automations_enabled?: boolean;
-  auto_sync_favorites?: boolean;
-  sync_excluded?: string[];
+  horn_normalize?: boolean | undefined;
+  tts_enabled?: boolean | undefined;
+  my_team_only?: boolean | undefined;
+  automations_enabled?: boolean | undefined;
+  auto_sync_favorites?: boolean | undefined;
+  sync_excluded?: string[] | undefined;
   /** goal-horn volume 0..1 set through HA's REST API around each horn; null/absent = off */
-  horn_volume?: number | null;
+  horn_volume?: number | null | undefined;
   /** media_player.* entities the horn volume applies to */
-  horn_players?: string[];
+  horn_players?: string[] | undefined;
 }
 
 /** PUT /api/settings body: partial; ha.token only when changed, ha.clear_token removes it. */
-export type SettingsPatch = Partial<Omit<Settings, "ha">> & { ha?: Partial<Omit<HASettings, "token_set">> & { clear_token?: boolean } };
+export type SettingsPatch = Partial<Omit<Settings, "ha">> & { ha?: Partial<Omit<HASettings, "token_set">> & { clear_token?: boolean | undefined } };
 
-export interface Trigger { id: string; label: string; sports?: string[] }
+export interface Trigger { id: string; label: string; sports?: string[] | undefined }
 
 export interface EventRecord {
   at: number;
@@ -214,13 +214,13 @@ export interface EventRecord {
   type: string;
   league: string;
   game: string;
-  team?: string;
-  label?: string;
+  team?: string | undefined;
+  label?: string | undefined;
   triggers: string[];
   manual: boolean;
   delay_s: number;
   outcome: "delivered" | "filtered";
-  reason?: string;
+  reason?: string | undefined;
   sent: { pusher_clients: number; rest: boolean; lights: number };
 }
 
@@ -236,9 +236,9 @@ export interface Status {
   flags: { my_team_only: boolean; automations_enabled: boolean; auto_sync_favorites: boolean };
   warnings: string[];
   /** per-provider feed health (ESPN per league, NHL, summary, insight, schedule) */
-  providers?: ProviderStatus[];
+  providers?: ProviderStatus[] | undefined;
   /** server clock when this response was built, so ages do not depend on the browser's clock */
-  server_time?: number;
+  server_time?: number | undefined;
 }
 
 export interface ProviderStatus {
@@ -253,32 +253,32 @@ export interface ProviderStatus {
   state: "ok" | "failing" | "stale" | "idle";
 }
 
-export interface Calibration { delay_s: number; measured_s: number; uncertainty_s: number; warning?: string }
+export interface Calibration { delay_s: number; measured_s: number; uncertainty_s: number; warning?: string | undefined }
 
 export interface Horn {
   league: string;
   abbr: string; // "default" for fallback (assumed)
   url: string;
-  size?: number;
+  size?: number | undefined;
   /** seconds, null when the file could not be parsed */
-  duration_s?: number | null;
+  duration_s?: number | null | undefined;
   /** will be altered (trimmed and/or normalised) under the current settings */
-  processed?: boolean;
+  processed?: boolean | undefined;
   /** will be cut shorter under the current settings */
-  trimmed?: boolean;
+  trimmed?: boolean | undefined;
 }
 
 export interface Device {
   entity_id: string;
   name: string;
   device_class: "light" | "switch";
-  capabilities?: { supported_color_modes?: string[]; effect_list?: string[] };
-  supports_color?: boolean;
-  supports_flash_speed?: boolean;
-  supports_flash_duration?: boolean;
-  supports_alternate_speed?: boolean;
-  supports_alternate_duration?: boolean;
-  integration_key?: string;
+  capabilities?: { supported_color_modes?: string[] | undefined; effect_list?: string[] | undefined };
+  supports_color?: boolean | undefined;
+  supports_flash_speed?: boolean | undefined;
+  supports_flash_duration?: boolean | undefined;
+  supports_alternate_speed?: boolean | undefined;
+  supports_alternate_duration?: boolean | undefined;
+  integration_key?: string | undefined;
 }
 
 export type ActionEffect = "flash" | "alternate" | "set_color" | "light_effect";
@@ -291,7 +291,7 @@ export interface LightAction {
   team_scope: TeamScope;
   entities: string[];
   effect: ActionEffect;
-  light_effect?: string;
+  light_effect?: string | undefined;
   duration: number;
   speed: number;
   colors: "team" | (RGB | null)[];
@@ -299,7 +299,7 @@ export interface LightAction {
 }
 
 export type ServerMsg =
-  | { t: "snapshot"; games: Game[]; settings?: Settings }
+  | { t: "snapshot"; games: Game[]; settings?: Settings | undefined }
   | { t: "game"; game: Game }
   | { t: "event"; event: EventPayload };
 

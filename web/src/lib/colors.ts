@@ -57,7 +57,7 @@ interface Cand { rgb: RGB; pen: number; extreme: boolean }
 
 interface ResolveOpts {
   /** the caller always draws WHITE text: light candidates are penalised and darkened to 4.5:1 */
-  whiteText?: boolean;
+  whiteText?: boolean | undefined;
 }
 
 function candidates(t: Team, whiteText = false): Cand[] {
@@ -97,6 +97,9 @@ export interface SideColors {
   fallback: boolean;
 }
 
+/** Used only if a team yields no colour candidates at all (it never does for ESPN data). */
+const NEUTRAL: Cand = { rgb: { r: 90, g: 98, b: 110 }, pen: 0, extreme: false };
+
 function finish(c: Cand, fallback: boolean): SideColors {
   let rgb = c.rgb;
   // too dark against the dark UI: lift towards white until it separates
@@ -128,8 +131,8 @@ export function resolveMatchup(away: Team, home: Team, opts: ResolveOpts = {}) {
       || (ok === best.ok && (ok ? cost < best.cost : de > best.de + 0.5 || (Math.abs(de - best.de) <= 0.5 && cost < best.cost)));
     if (better) best = { i, j, cost, de, ok };
   }));
-  const b = best!;
-  const out = { away: finish(A[b.i], b.i > 0), home: finish(H[b.j], b.j > 0), switched: b.i > 0 || b.j > 0 };
+  const b = best ?? { i: 0, j: 0 };
+  const out = { away: finish(A[b.i] ?? NEUTRAL, b.i > 0), home: finish(H[b.j] ?? NEUTRAL, b.j > 0), switched: b.i > 0 || b.j > 0 };
   if (cache.size > 500) cache.clear();
   cache.set(key, out);
   return out;
@@ -138,11 +141,12 @@ export function resolveMatchup(away: Team, home: Team, opts: ResolveOpts = {}) {
 /** Solo colour: first candidate that keeps white text >= 4.5:1, else the primary darkened until it does. */
 export function resolveTeam(t: Team): SideColors {
   const cs = candidates(t);
+  const primary = cs[0] ?? NEUTRAL;
   const ok = cs.filter((c) => !c.extreme && contrast(c.rgb, WHITE) >= 4.5)[0]
     ?? cs.filter((c) => contrast(c.rgb, WHITE) >= 4.5 && luminance(c.rgb) >= 0.02)[0];
-  if (ok) return finish(ok, ok !== cs[0]);
-  let rgb = cs[0].rgb;
-  for (let k = 1; contrast(rgb, WHITE) < 4.5 && k <= 20; k++) rgb = mix(cs[0].rgb, { r: 0, g: 0, b: 0 }, k * 0.05);
+  if (ok) return finish(ok, ok !== primary);
+  let rgb = primary.rgb;
+  for (let k = 1; contrast(rgb, WHITE) < 4.5 && k <= 20; k++) rgb = mix(primary.rgb, { r: 0, g: 0, b: 0 }, k * 0.05);
   return finish({ rgb, pen: 0, extreme: false }, true);
 }
 

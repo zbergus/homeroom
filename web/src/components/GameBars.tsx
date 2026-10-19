@@ -46,7 +46,7 @@ function Bar({ team, colors, compact, flash, score }: { team: Team; colors: Side
   );
 }
 
-export function GameBars({ game, now, compact = false, flashAbbr }: { game: Game; now: number; compact?: boolean; flashAbbr?: string }) {
+export function GameBars({ game, now, compact = false, flashAbbr }: { game: Game; now: number; compact?: boolean | undefined; flashAbbr?: string | undefined }) {
   const { away, home } = resolveMatchup(game.away, game.home);
   const clock = useGameClock(game.status === "in" && !game.intermission ? game : undefined, 250);
   const [a, b] = statusLines(game, clock.text || game.clock, now);

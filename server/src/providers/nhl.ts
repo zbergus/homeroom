@@ -16,14 +16,14 @@ export interface NhlGame {
   period: number;
   clock: string;
   /** seconds left on the period clock, and whether it is running */
-  clockS?: number;
-  clockRunning?: boolean;
+  clockS?: number | undefined;
+  clockRunning?: boolean | undefined;
   inIntermission: boolean;
   homeScore: number;
   awayScore: number;
   goals: ScoringPlay[];
   /** from the latest play-by-play event (only the play-by-play feed carries it) */
-  situation?: { advantage: "home" | "away" | null; home_skaters: number; away_skaters: number };
+  situation?: { advantage: "home" | "away" | null; home_skaters: number; away_skaters: number } | undefined;
 }
 
 /** Skater situation as of the most recent play that carries a situationCode. */

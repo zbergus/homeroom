@@ -224,7 +224,7 @@ export default function Scoreboard() {
     body = <IdleScreen next={next} now={now} loading={want === "auto" && !sync} />;
   } else {
     const steps = stepsFor(game);
-    const step: Step = forced && STEPS.includes(forced) ? forced : steps[tick % steps.length];
+    const step: Step = forced && STEPS.includes(forced) ? forced : (steps[tick % steps.length] ?? "live");
     switch (step) {
       case "players": body = <PlayersScreen key="p" game={game} />; break;
       case "form": body = <FormScreen key="f" game={game} />; break;

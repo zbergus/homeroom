@@ -47,7 +47,7 @@ const dayKey = (d: Date) =>
 
 export const ordinal = (n: number) => {
   const s = ["th", "st", "nd", "rd"], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  return n + (s[(v - 20) % 10] || s[v] || "th");
 };
 
 export function sortGames<T extends GameLite>(games: T[]): T[] {

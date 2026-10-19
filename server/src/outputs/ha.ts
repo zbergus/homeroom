@@ -75,7 +75,7 @@ export class HaOutputs {
     await this.post(ha.url, ha.token, `connectedroom_${ev.type}`, flatBody(ev, tts_enabled));
   }
 
-  async test(): Promise<{ ok: boolean; status?: number; error?: string }> {
+  async test(): Promise<{ ok: boolean; status?: number | undefined; error?: string | undefined }> {
     const { ha } = this.engine.settings;
     if (!ha.url || !ha.token) return { ok: false, error: "Set the Home Assistant URL and a long-lived token first" };
     try {

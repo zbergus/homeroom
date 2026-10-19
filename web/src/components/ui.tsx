@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-export function Card({ title, subtitle, children, actions, id }: { title: string; subtitle?: string; children: React.ReactNode; actions?: React.ReactNode; id?: string }) {
+export function Card({ title, subtitle, children, actions, id }: { title: string; subtitle?: string | undefined; children: React.ReactNode; actions?: React.ReactNode | undefined; id?: string | undefined }) {
   const hid = useId();
   return (
     <section id={id} aria-labelledby={hid} className="rounded-2xl border border-white/10 bg-ink-800 p-4 sm:p-6">
@@ -17,7 +17,7 @@ export function Card({ title, subtitle, children, actions, id }: { title: string
 }
 
 const btn = "inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-soft disabled:cursor-not-allowed disabled:opacity-50";
-export function Button({ variant = "secondary", className = "", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }) {
+export function Button({ variant = "secondary", className = "", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" | undefined }) {
   const v = {
     primary: "bg-accent text-white hover:bg-accent-soft",
     secondary: "bg-ink-600 text-slate-100 hover:bg-[#2f3a56]",
@@ -29,7 +29,7 @@ export function Button({ variant = "secondary", className = "", ...p }: React.Bu
 
 export const inputCls = "min-h-[40px] w-full rounded-lg border border-white/15 bg-ink-900 px-3 text-sm text-white placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-soft";
 
-export function Field({ label, hint, children, htmlFor }: { label: string; hint?: string; children: React.ReactNode; htmlFor?: string }) {
+export function Field({ label, hint, children, htmlFor }: { label: string; hint?: string | undefined; children: React.ReactNode; htmlFor?: string | undefined }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={htmlFor} className="text-sm font-medium text-slate-200">{label}</label>
@@ -39,7 +39,7 @@ export function Field({ label, hint, children, htmlFor }: { label: string; hint?
   );
 }
 
-export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean | undefined }) {
   return (
     <button
       type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled}
@@ -51,7 +51,7 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
   );
 }
 
-export function Chip({ active, onClick, children, className = "" }: { active?: boolean; onClick?: () => void; children: React.ReactNode; className?: string }) {
+export function Chip({ active, onClick, children, className = "" }: { active?: boolean | undefined; onClick?: () => void; children: React.ReactNode; className?: string | undefined }) {
   return (
     <button type="button" aria-pressed={active} onClick={onClick}
       className={`min-h-[36px] rounded-full border px-3.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-soft ${active ? "border-accent bg-accent/20 text-white" : "border-white/15 text-slate-300 hover:bg-white/5"} ${className}`}>

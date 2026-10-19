@@ -18,7 +18,7 @@ const mockDevices: Device[] = [
 const mockLeagues: League[] = ["nhl", "nfl", "nba", "mlb", "epl"].map((id) => ({ id, name: id.toUpperCase() }));
 
 function mock<T>(method: string, path: string, body?: unknown): T {
-  const p = path.split("?")[0];
+  const p = path.split("?")[0] ?? path;
   if (p === "/api/schedule") return mockSchedule() as T;
   if (p === "/api/leagues") return mockLeagues as T;
   if (p === "/api/sync") { if (method === "PUT") mem.sync = { ...mem.sync, ...(body as Partial<SyncState>) }; return mem.sync as T; }
@@ -26,7 +26,7 @@ function mock<T>(method: string, path: string, body?: unknown): T {
   if (p === "/api/devices") return mockDevices as T;
   if (p === "/api/actions") { if (method === "PUT") mem.actions = body as LightAction[]; return mem.actions as T; }
   if (p.startsWith("/api/teams/")) {
-    const l = p.split("/")[3];
+    const l = p.split("/")[3] ?? "";
     const ab: Record<string, string[]> = { nhl: ["MIN", "CBJ", "BOS", "TOR", "EDM", "VAN"], nfl: ["GB", "CHI", "DAL", "PHI"], nba: ["LAL", "BOS", "MIA", "NYK"], mlb: ["NYY", "BOS", "LAD", "SF"], epl: ["ARS", "MCI"] };
     return (ab[l] ?? []).map((abbr) => ({ abbr, name: abbr })) as T;
   }

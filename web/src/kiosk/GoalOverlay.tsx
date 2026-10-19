@@ -25,7 +25,7 @@ export function useGoalQueue(match: (e: EventPayload) => boolean, ms = OVERLAY_M
   return { current: head, pending: Math.max(0, queue.length - 1) };
 }
 
-export function GoalOverlay({ event, pending }: { event?: EventPayload; pending: number }) {
+export function GoalOverlay({ event, pending }: { event?: EventPayload | undefined; pending: number }) {
   if (!event) return null;
   const { game, team, scoring } = event;
   const label = (scoring?.label ?? "GOAL").toUpperCase();

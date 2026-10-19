@@ -24,7 +24,7 @@ interface Meta {
   date: string;
   title: string;
   start_time: string;
-  nhl_id?: string;
+  nhl_id?: string | undefined;
 }
 
 export interface Marker {
@@ -38,13 +38,13 @@ interface Snap {
   state: "pre" | "in" | "post";
   period: number;
   /** seconds left on a count-down clock (hockey/basketball/football), or elapsed seconds for soccer */
-  clockS?: number;
+  clockS?: number | undefined;
   running: boolean;
   intermission: boolean;
   /** seconds until the next period starts, while intermission */
-  breakLeftS?: number;
+  breakLeftS?: number | undefined;
   halftime: boolean;
-  half?: "Top" | "Bottom";
+  half?: "Top" | "Bottom" | undefined;
   home: number;
   away: number;
 }
@@ -53,14 +53,14 @@ interface Mark {
   w: number;
   period: number;
   /** seconds remaining on the display clock (count-down sports) */
-  rem?: number;
+  rem?: number | undefined;
   /** hockey: seconds elapsed in the period */
-  el?: number;
+  el?: number | undefined;
   home: number;
   away: number;
   type: string;
   scoring: boolean;
-  half?: "Top" | "Bottom";
+  half?: "Top" | "Bottom" | undefined;
 }
 
 interface Timeline {
@@ -130,15 +130,17 @@ class PlayTimeline implements Timeline {
 
   snap(w: number): Snap {
     const m = this.marks;
-    if (!m.length || w < this.first) return { state: "pre", period: 0, running: false, intermission: false, halftime: false, home: 0, away: 0 };
+    const pre: Snap = { state: "pre", period: 0, running: false, intermission: false, halftime: false, home: 0, away: 0 };
+    const last = m[m.length - 1];
+    if (!last || w < this.first) return pre;
     if (w >= this.end) {
-      const last = m[m.length - 1];
       return { state: "post", period: last.period, clockS: 0, running: false, intermission: false, halftime: false, ...this.finalScore };
     }
     let i = 0;
     // marks are sorted; linear scan from the end is plenty fast for a few hundred plays
-    for (let k = m.length - 1; k >= 0; k--) if (m[k].w <= w) { i = k; break; }
+    for (let k = m.length - 1; k >= 0; k--) if ((m[k]?.w ?? Infinity) <= w) { i = k; break; }
     const cur = m[i];
+    if (!cur) return pre;
     const nxt = m[i + 1];
     const snap: Snap = { state: "in", period: cur.period, clockS: cur.rem, running: false, intermission: false, halftime: false, home: cur.home, away: cur.away, half: cur.half };
     if (nxt && nxt.period > cur.period) {
@@ -340,13 +342,13 @@ export class ReplayGame {
     const per = Number(p.periodDescriptor?.number ?? 1);
     const key: string = p.typeDescKey;
     const marks = this.nhlMarks();
-    if (key === "period-start") return this.markWall(/^Period Start$/, per) ?? this.nhlMarks()[0].w;
+    if (key === "period-start") return this.markWall(/^Period Start$/, per) ?? this.tl.first;
     if (key === "period-end") return this.markWall(/^Period End$/, per) ?? this.tl.end;
     if (key === "game-end") return marks.find((k) => /^End of Game$/.test(k.type))?.w ?? this.tl.end;
     if (key === "shootout-complete") return this.markWall(/^Shootout End$/, per) ?? this.tl.end;
     if (per >= 5) {
       // shootout attempts: pair the k-th NHL goal with ESPN's k-th shootout scoring play, others spread across the SO
-      const start = this.markWall(/^Period Start$/, per) ?? marks[0].w;
+      const start = this.markWall(/^Period Start$/, per) ?? this.tl.first;
       const endW = this.markWall(/^Shootout End$/, per) ?? this.tl.end;
       const soMarks = marks.filter((k) => k.period >= 5 && k.scoring);
       if (key === "goal") {
@@ -358,13 +360,15 @@ export class ReplayGame {
     return this.wallInPeriod(per, mmss(p.timeInPeriod));
   }
   private wallInPeriod(per: number, el: number): number {
-    const ks = this.nhlMarks().filter((k) => k.period === per && k.el !== undefined);
-    if (!ks.length) return this.tl.first;
-    const j = ks.findIndex((k) => (k.el as number) >= el);
-    if (j < 0) return ks[ks.length - 1].w;
-    if (j === 0 || (ks[j].el as number) === el) return ks[j].w;
-    const a = ks[j - 1], b = ks[j];
-    const f = (el - (a.el as number)) / Math.max(1, (b.el as number) - (a.el as number));
+    const ks = this.nhlMarks().flatMap((k) => (k.period === per && k.el !== undefined ? [{ w: k.w, el: k.el }] : []));
+    const last = ks[ks.length - 1];
+    if (!last) return this.tl.first;
+    const j = ks.findIndex((k) => k.el >= el);
+    const b = ks[j];
+    if (!b) return last.w;
+    const a = ks[j - 1];
+    if (!a || b.el === el) return b.w;
+    const f = (el - a.el) / Math.max(1, b.el - a.el);
     return Math.round(a.w + f * (b.w - a.w));
   }
   private nhlGoalWallClock(g: Raw): number {
@@ -477,7 +481,7 @@ export class ReplayGame {
     g.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
     g.gameState = this.nhlState(s);
     if (s.state !== "post") {
-      g.goals = (g.goals ?? []).filter((_: Raw, i: number) => this.nhlGoalWall[i] <= w);
+      g.goals = (g.goals ?? []).filter((_: Raw, i: number) => (this.nhlGoalWall[i] ?? Infinity) <= w);
       const reg = (g.goals as Raw[]).filter((x) => Number(x.period) <= 4);
       g.homeTeam.score = reg.filter((x) => x.teamAbbrev === g.homeTeam.abbrev).length;
       g.awayTeam.score = reg.filter((x) => x.teamAbbrev === g.awayTeam.abbrev).length;
@@ -504,7 +508,7 @@ export class ReplayGame {
     d.startTimeUTC = new Date(startAtMs).toISOString().replace(/\.\d+Z$/, "Z");
     d.gameState = this.nhlState(s);
     const all: Raw[] = d.plays;
-    d.plays = all.filter((_: Raw, i: number) => this.nhlPlayWall[i] <= w);
+    d.plays = all.filter((_: Raw, i: number) => (this.nhlPlayWall[i] ?? Infinity) <= w);
     if (s.state !== "post") {
       const homeId = d.homeTeam.id;
       const regGoals = (d.plays as Raw[]).filter((p) => p.typeDescKey === "goal" && Number(p.periodDescriptor?.number) <= 4);
@@ -536,11 +540,15 @@ export class ReplayGame {
       let n = 0;
       let g = 0;
       for (let i = 0; i < m.length; i++) {
-        if (i > 0 && m[i].home + m[i].away > m[i - 1].home + m[i - 1].away) out.push({ kind: "goal", label: `goal ${++g}`, v: V(m[i].w) });
-        if (i + 1 < m.length && m[i + 1].period > m[i].period) {
+        const cur = m[i];
+        const prev = m[i - 1];
+        const next = m[i + 1];
+        if (!cur) continue;
+        if (prev && cur.home + cur.away > prev.home + prev.away) out.push({ kind: "goal", label: `goal ${++g}`, v: V(cur.w) });
+        if (next && next.period > cur.period) {
           n++;
-          out.push({ kind: "intermission", label: `intermission ${n}`, v: V(m[i].w) });
-          out.push({ kind: "resume", label: `resume ${n}`, v: V(m[i + 1].w) });
+          out.push({ kind: "intermission", label: `intermission ${n}`, v: V(cur.w) });
+          out.push({ kind: "resume", label: `resume ${n}`, v: V(next.w) });
         }
       }
       // shootout/final tally change is not in the marks (we hold the score); the end of the recording is the final marker

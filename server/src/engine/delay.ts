@@ -32,7 +32,7 @@ export class DelayBuffer<T> {
     // insert keeping (at, seq) order
     const entry = { at, seq: this.seq++, item };
     let i = this.queue.length;
-    while (i > 0 && this.queue[i - 1].at > at) i--;
+    while (i > 0 && (this.queue[i - 1]?.at ?? -Infinity) > at) i--;
     this.queue.splice(i, 0, entry);
     this.arm();
     return at;
@@ -56,7 +56,7 @@ export class DelayBuffer<T> {
   private flush(): void {
     this.timer = null;
     const t = this.now();
-    while (this.queue.length && this.queue[0].at <= t) {
+    while ((this.queue[0]?.at ?? Infinity) <= t) {
       const { item } = this.queue.shift()!;
       try {
         this.deliver(item);

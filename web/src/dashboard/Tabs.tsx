@@ -16,8 +16,10 @@ export default function Tabs<K extends string>({ tabs, value, onChange }: { tabs
     const next = e.key === "ArrowRight" ? (i + 1) % tabs.length : e.key === "ArrowLeft" ? (i + tabs.length - 1) % tabs.length : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
     if (next < 0) return;
     e.preventDefault();
-    onChange(tabs[next].key);
-    refs.current[tabs[next].key]?.focus();
+    const target = tabs[next];
+    if (!target) return;
+    onChange(target.key);
+    refs.current[target.key]?.focus();
   };
   return (
     <div role="tablist" aria-label="Dashboard sections" className="mx-auto flex max-w-6xl gap-1 px-4 sm:px-6">

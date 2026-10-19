@@ -82,7 +82,7 @@ export class HornVolume {
     const res = await this.f(`${ha.url.replace(/\/$/, "")}${path}`, {
       method,
       headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       redirect: "error", // the bearer token must only go to the URL the user configured
       signal: AbortSignal.timeout(this.o.timeoutMs),
     });

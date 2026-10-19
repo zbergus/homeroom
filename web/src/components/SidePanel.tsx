@@ -4,7 +4,7 @@ import { SplitBars, rowsFor } from "./StatBars";
 
 const U = (n: number) => `calc(var(--u) * ${n})`;
 
-const RES: Record<string, { bg: string; fg: string }> = {
+const RES: Record<FormGame["result"], { bg: string; fg: string }> = {
   W: { bg: "#15803d", fg: "#fff" },
   L: { bg: "#b91c1c", fg: "#fff" },
   OTL: { bg: "#b45309", fg: "#fff" },
@@ -12,7 +12,7 @@ const RES: Record<string, { bg: string; fg: string }> = {
 };
 
 function Chip({ g, size }: { g: FormGame; size: number }) {
-  const c = RES[g.result] ?? RES.T;
+  const c = RES[g.result];
   return (
     <span
       className="relative inline-flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-[.3em] font-display font-black"
@@ -30,7 +30,7 @@ function Chip({ g, size }: { g: FormGame; size: number }) {
 }
 
 /** "Last 10 Games" W/L chips with opponent logos. Renders nothing without data. */
-function LastTen({ team, form, size = 2.8 }: { team: Team; form?: TeamForm; size?: number }) {
+function LastTen({ team, form, size = 2.8 }: { team: Team; form?: TeamForm | undefined; size?: number | undefined }) {
   const games = form?.games?.slice(-10) ?? [];
   if (!games.length) return null;
   return (
@@ -50,7 +50,7 @@ function LastTen({ team, form, size = 2.8 }: { team: Team; form?: TeamForm; size
 }
 
 /** Right-hand scoreboard panel: stat bars (or form averages pre-game) + Last 10 chips. */
-export function SidePanel({ game, maxRows = 7, size = 1 }: { game: Game; maxRows?: number; size?: number }) {
+export function SidePanel({ game, maxRows = 7, size = 1 }: { game: Game; maxRows?: number | undefined; size?: number | undefined }) {
   const form = game.insight?.form;
   let rows = rowsFor(game, maxRows);
   let heading = "Game stats";

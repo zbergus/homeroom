@@ -49,7 +49,8 @@ const time = (name: string) => (s: Stats): Val | undefined => {
 /** "6-40" penalties-yards: count only */
 const firstOf = (name: string) => (s: Stats): Val | undefined => {
   const m = /^(\d+)/.exec(s.get(name)?.display ?? "");
-  return m ? { d: m[1], n: Number(m[1]) } : undefined;
+  const d = m?.[1];
+  return d === undefined ? undefined : { d, n: Number(d) };
 };
 
 /** Row order and wording follow the reference break screens; keys are ESPN's own stat names. */

@@ -2,7 +2,7 @@
 FROM node:22-slim AS web
 WORKDIR /web
 COPY web/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm ci
 COPY web/ ./
 RUN npm run build
 
@@ -14,7 +14,9 @@ COPY server/ ./
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-slim
-ENV NODE_ENV=production PORT=8080 DATA_DIR=/data MEDIA_DIR=/media WEB_DIR=/app/web NODE_NO_WARNINGS=1
+ENV NODE_ENV=production PORT=8080 DATA_DIR=/data MEDIA_DIR=/media WEB_DIR=/app/web
+# node:sqlite is still flagged experimental on Node 22; silence only that, so deprecations and other warnings stay visible
+ENV NODE_OPTIONS=--disable-warning=ExperimentalWarning
 # ffmpeg lets Homeroom trim, fade and normalise long goal horns on demand (without it horns are cut on an MP3 frame boundary, no fade)
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

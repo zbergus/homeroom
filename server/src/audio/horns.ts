@@ -178,7 +178,7 @@ export class HornService {
       this.swept = true;
       for (const f of fs.readdirSync(this.o.cacheDir)) {
         const m = /^([a-z0-9]+)-([A-Za-z0-9]+)-[0-9a-f]{16}\.mp3$/.exec(f);
-        const orphan = m ? !fs.existsSync(this.sourcePath(m[1], m[2])) : f.includes(".tmp-") && Date.now() - fs.statSync(path.join(this.o.cacheDir, f)).mtimeMs > 600_000;
+        const orphan = m?.[1] && m[2] ? !fs.existsSync(this.sourcePath(m[1], m[2])) : f.includes(".tmp-") && Date.now() - fs.statSync(path.join(this.o.cacheDir, f)).mtimeMs > 600_000;
         if (orphan) fs.rmSync(path.join(this.o.cacheDir, f), { force: true });
       }
     } catch { /* cache hygiene is best effort */ }

@@ -189,6 +189,7 @@ export interface Summary {
 /** One call, two products: scoring plays (scorer/assists) and the boxscore comparison rows. */
 export async function fetchSummary(gameId: string, homeAbbrByTeamId: Record<string, string>): Promise<Summary> {
   const [leagueId, eventId] = gameId.split(":");
+  if (!leagueId || !eventId) throw new Error(`bad game id "${gameId}"`);
   const league = leagueById(leagueId);
   const data = await getJson(`${BASE}/${league.espn}/summary?event=${eventId}`);
   return parseSummary(league, data, homeAbbrByTeamId);

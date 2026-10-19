@@ -49,7 +49,7 @@ function better(r: StatRow): "l" | "r" | "=" {
  * Mirrored bars growing outward from a centre label (break screens). Better value white, other grey.
  * `gap` in u between rows. Away left, home right.
  */
-export function MirrorBars({ rows, size = 2.6, gap = 2, className = "" }: { rows: StatRow[]; size?: number; gap?: number; className?: string }) {
+export function MirrorBars({ rows, size = 2.6, gap = 2, className = "" }: { rows: StatRow[]; size?: number | undefined; gap?: number | undefined; className?: string | undefined }) {
   if (!rows.length) return null;
   return (
     <div className={`flex flex-col ${className}`} style={{ gap: U(gap) }}>
@@ -80,7 +80,7 @@ export function MirrorBars({ rows, size = 2.6, gap = 2, className = "" }: { rows
 /**
  * Scoreboard side panel: value / label / value above a two-segment team-colour bar.
  */
-export function SplitBars({ game, rows, size = 1 }: { game: Pick<Game, "away" | "home">; rows: StatRow[]; size?: number }) {
+export function SplitBars({ game, rows, size = 1 }: { game: Pick<Game, "away" | "home">; rows: StatRow[]; size?: number | undefined }) {
   if (!rows.length) return null;
   const { away, home } = resolveMatchup(game.away, game.home);
   return (

@@ -4,8 +4,8 @@ interface Seed {
   id: string; league: string; sport: string; status: Game["status"];
   away: [string, string, string, [number, number, number], [number, number, number]];
   home: [string, string, string, [number, number, number], [number, number, number]];
-  startInMin: number; period: number; clock: string; as: number; hs: number; intermission?: boolean;
-  rec?: [string, string];
+  startInMin: number; period: number; clock: string; as: number; hs: number; intermission?: boolean | undefined;
+  rec?: [string | undefined, string];
 }
 
 const t = (id: string, [abbr, name, city, p, s]: Seed["home"]): Team => ({
@@ -34,6 +34,9 @@ const SEEDS: Seed[] = [
   { id: "nfl:m2", league: "nfl", sport: "football", status: "post", away: ["DAL", "Cowboys", "Dallas", [0, 53, 148], [134, 147, 151]], home: ["PHI", "Eagles", "Philadelphia", [0, 76, 84], [165, 172, 175]], startInMin: -240, period: 4, clock: "00:00", as: 24, hs: 27 },
 ];
 
+/** Element `i` of a constant list, wrapping around, so the demo data never indexes out of range. */
+const pick = <T,>(list: readonly T[], i: number): T => list[((i % list.length) + list.length) % list.length] as T;
+
 const PERIOD_LABEL: Record<string, (n: number, clock: string) => string> = {
   hockey: (n) => (n <= 3 ? `${["", "1st", "2nd", "3rd"][n]} period` : "OT"),
   football: (n) => `${["", "1st", "2nd", "3rd", "4th"][n] ?? "OT"} quarter`,
@@ -42,12 +45,16 @@ const PERIOD_LABEL: Record<string, (n: number, clock: string) => string> = {
   soccer: (n) => (n === 1 ? "1st half" : "2nd half"),
 };
 
+const periodLabel = (sport: string, n: number, clock: string): string => (PERIOD_LABEL[sport] ?? ((k: number) => `period ${k}`))(n, clock);
+
 const LABEL: Record<string, string> = { hockey: "GOAL", soccer: "GOAL", basketball: "BASKET", baseball: "RUN", football: "TOUCHDOWN" };
 const DELTA: Record<string, () => number> = {
   hockey: () => 1, soccer: () => 1, baseball: () => 1,
   basketball: () => (Math.random() < 0.7 ? 2 : 3),
   football: () => (Math.random() < 0.6 ? 7 : 3),
 };
+const deltaFor = (sport: string): number => (DELTA[sport] ?? (() => 1))();
+const POSITIONS = ["C", "RW", "LW", "D"];
 const SCORERS = ["A. Moreau", "S. Okafor", "J. Lindqvist", "D. Reyes", "M. Tanaka", "K. Abbott", "R. Novak", "T. Greene"];
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -73,7 +80,7 @@ function mkGames(abbr: string, n: number): FormGame[] {
     const gf = result === "W" ? win : result === "OTL" ? lo + 1 : lo;
     const ga = result === "W" ? lo : result === "OTL" ? lo + 2 : lo + 1 + Math.floor(r() * 2);
     const d = new Date(Date.now() - (n - i) * 2 * 86400_000);
-    return { opp_abbr: OPPS[(i + abbr.length) % OPPS.length], venue: r() < 0.5 ? "H" : "A", gf: result === "OTL" ? ga - 1 : gf, ga, result, date: d.toISOString() };
+    return { opp_abbr: pick(OPPS, i + abbr.length), venue: r() < 0.5 ? "H" : "A", gf: result === "OTL" ? ga - 1 : gf, ga, result, date: d.toISOString() };
   });
 }
 const recOf = (g: FormGame[]) => `${g.filter((x) => x.result === "W").length}-${g.filter((x) => x.result === "L").length}-${g.filter((x) => x.result === "OTL").length}`;
@@ -81,11 +88,11 @@ const avg = (g: FormGame[], k: "gf" | "ga") => g.reduce((a, x) => a + x[k], 0) /
 
 function mkPlayer(abbr: string, side: number): PlayerWatch {
   const r = rng(`pl:${abbr}`);
-  const first = FIRST[Math.floor(r() * FIRST.length)], last = LAST[(Math.floor(r() * LAST.length) + side) % LAST.length];
-  const log = Array.from({ length: 5 }, (_, i) => ({ opp_abbr: `${i % 2 ? "@" : ""}${OPPS[(i * 3 + side) % OPPS.length]}`, value: Math.floor(r() * 4) }));
+  const first = pick(FIRST, Math.floor(r() * FIRST.length)), last = pick(LAST, Math.floor(r() * LAST.length) + side);
+  const log = Array.from({ length: 5 }, (_, i) => ({ opp_abbr: `${i % 2 ? "@" : ""}${pick(OPPS, i * 3 + side)}`, value: Math.floor(r() * 4) }));
   const g = Math.floor(r() * 6) + 2, a = Math.floor(r() * 6) + 1;
   return {
-    id: `${abbr}-p`, name: `${first} ${last}`, first, last, jersey: String(Math.floor(r() * 80) + 2), position: ["C", "RW", "LW", "D"][Math.floor(r() * 3)], team_abbr: abbr,
+    id: `${abbr}-p`, name: `${first} ${last}`, first, last, jersey: String(Math.floor(r() * 80) + 2), position: pick(POSITIONS, Math.floor(r() * 3)), team_abbr: abbr,
     tiles: [{ label: "Goals", value: String(g) }, { label: "Assists", value: String(a) }, { label: "Points", value: String(g + a) }, { label: "Shots", value: String(g * 4 + 3) }],
     log, log_label: "Points per game",
   };
@@ -137,7 +144,7 @@ function build(s: Seed): Game {
   const home = t(`${s.id}-h`, s.home);
   away.score = s.as; home.score = s.hs;
   away.record = s.rec?.[0]; home.record = s.rec?.[1];
-  const label = PERIOD_LABEL[s.sport](s.period, s.clock);
+  const label = periodLabel(s.sport, s.period, s.clock);
   const g: Game = {
     id: s.id, league: s.league, sport: s.sport, status: s.status,
     start_time: new Date(Date.now() + s.startInMin * 60_000).toISOString(),
@@ -146,7 +153,7 @@ function build(s: Seed): Game {
     linescores: { home: [], away: [] },
     stats: { home: {}, away: {} }, goals: [],
   };
-  const clockSecs = (c: string) => { const [m, sec] = c.split(":").map(Number); return Number.isFinite(m) && Number.isFinite(sec) ? m * 60 + sec : undefined; };
+  const clockSecs = (c: string) => { const [m = NaN, sec = NaN] = c.split(":").map(Number); return Number.isFinite(m) && Number.isFinite(sec) ? m * 60 + sec : undefined; };
   if (s.sport === "soccer" && s.status === "in") { g.clock_s = 67 * 60 + 12; g.clock_dir = "up"; g.clock_running = true; }
   else if (s.sport !== "baseball") { g.clock_s = clockSecs(s.clock); g.clock_dir = "down"; g.clock_running = s.status === "in" && !s.intermission; }
   if (s.sport === "hockey") g.insight = mkInsight(s);
@@ -175,9 +182,9 @@ function build(s: Seed): Game {
       const unit = s.sport === "hockey" || s.sport === "soccer" || s.sport === "baseball" ? 1 : 7;
       if (side === "a") aa = Math.min(s.as, aa + unit); else ha = Math.min(s.hs, ha + unit);
       plays.push({
-        period: per, period_label: PERIOD_LABEL[s.sport](per, ""), clock: `${pad(2 + ((i * 7) % 16))}:${pad((i * 13) % 60)}`,
-        team_abbr: side === "a" ? s.away[0] : s.home[0], scorer: SCORERS[(i * 3) % SCORERS.length],
-        assists: i % 2 ? [SCORERS[(i + 1) % SCORERS.length]] : [SCORERS[(i + 2) % SCORERS.length], SCORERS[(i + 4) % SCORERS.length]],
+        period: per, period_label: periodLabel(s.sport, per, ""), clock: `${pad(2 + ((i * 7) % 16))}:${pad((i * 13) % 60)}`,
+        team_abbr: side === "a" ? s.away[0] : s.home[0], scorer: pick(SCORERS, i * 3),
+        assists: i % 2 ? [pick(SCORERS, i + 1)] : [pick(SCORERS, i + 2), pick(SCORERS, i + 4)],
         strength: i === 1 ? "pp" : i === 4 ? "en" : "ev", home_score: ha, away_score: aa,
       });
       i++;
@@ -204,7 +211,7 @@ export function startMock(sink: MockSink, intervalMs = 15000): () => void {
     for (const g of games) {
       if (g.status === "pre") {
         if (Date.parse(g.start_time as string) <= Date.now()) {
-          g.status = "in"; g.period = 1; g.period_label = PERIOD_LABEL[g.sport](1, ""); emit(g);
+          g.status = "in"; g.period = 1; g.period_label = periodLabel(g.sport, 1, ""); emit(g);
           sink.event(mkEvent(g, "game_start", ++n));
         }
         continue;
@@ -212,7 +219,7 @@ export function startMock(sink: MockSink, intervalMs = 15000): () => void {
       if (g.status !== "in" || g.intermission) continue;
       if (g.sport === "soccer" && g.clock_s !== undefined) { g.clock_s += 1; continue; }
       if (g.sport === "hockey" || g.sport === "basketball" || g.sport === "football") {
-        const [m, s] = g.clock.split(":").map(Number);
+        const [m = 0, s = 0] = g.clock.split(":").map(Number);
         let tot = m * 60 + s - 1;
         if (tot < 0) tot = 20 * 60;
         g.clock = `${pad(Math.floor(tot / 60))}:${pad(tot % 60)}`;
@@ -227,21 +234,22 @@ export function startMock(sink: MockSink, intervalMs = 15000): () => void {
     const live = games.filter((g) => g.status === "in" && !g.intermission);
     if (!live.length) return;
     const g = live[Math.floor(Math.random() * live.length)];
+    if (!g) return;
     const home = Math.random() < 0.5;
     const team = home ? g.home : g.away;
-    const delta = DELTA[g.sport]();
+    const delta = deltaFor(g.sport);
     team.score = (team.score ?? 0) + delta;
-    const scorer = SCORERS[Math.floor(Math.random() * SCORERS.length)];
+    const scorer = pick(SCORERS, Math.floor(Math.random() * SCORERS.length));
     const play: ScoringPlay = {
       period: g.period, period_label: g.period_label, clock: g.clock, team_abbr: team.abbr, scorer,
-      assists: [SCORERS[Math.floor(Math.random() * SCORERS.length)]], strength: "ev",
+      assists: [pick(SCORERS, Math.floor(Math.random() * SCORERS.length))], strength: "ev",
       home_score: g.home.score ?? 0, away_score: g.away.score ?? 0,
     };
     g.goals.push(play);
     emit(g);
     const ev = mkEvent(g, "goal", ++n);
     ev.team = structuredClone(team);
-    let label = LABEL[g.sport];
+    let label = LABEL[g.sport] ?? "GOAL";
     if (g.sport === "football") label = delta === 3 ? "FIELD GOAL" : "TOUCHDOWN";
     ev.scoring = { label, scorer, assists: play.assists, strength: "ev", delta, home_score: play.home_score, away_score: play.away_score };
     ev.natural_text = `${label}, ${team.display_name}! ${scorer} scores.`;
@@ -251,6 +259,7 @@ export function startMock(sink: MockSink, intervalMs = 15000): () => void {
   // first goal shortly after load so screenshots/dev see an overlay quickly
   const first = setTimeout(() => {
     const g = games[0];
+    if (!g) return;
     g.home.score = (g.home.score ?? 0) + 1;
     const play: ScoringPlay = { period: g.period, period_label: g.period_label, clock: g.clock, team_abbr: g.home.abbr, scorer: "D. Yurov", assists: ["Y. Trenin"], strength: "ev", home_score: g.home.score, away_score: g.away.score ?? 0 };
     g.goals.push(play);
@@ -264,6 +273,7 @@ export function startMock(sink: MockSink, intervalMs = 15000): () => void {
   // fake VAR: take the first goal back ~10 s after it was scored
   const overturn = setTimeout(() => {
     const g = games[0];
+    if (!g) return;
     const gone = g.goals.pop();
     if (!gone) return;
     g.home.score = Math.max(0, (g.home.score ?? 0) - 1);

@@ -30,7 +30,7 @@ export default function Calibrate({ settings, update, live, active }: { settings
   const [err, setErr] = useState("");
   const [applied, setApplied] = useState("");
 
-  useEffect(() => { if (candidates.length && !candidates.some((g) => g.id === gid)) setGid(candidates[0].id); }, [candidates, gid]);
+  useEffect(() => { const first = candidates[0]; if (first && !candidates.some((g) => g.id === gid)) setGid(first.id); }, [candidates, gid]);
   const game = candidates.find((g) => g.id === gid);
   const shown = live.get(gid);
   const tick = useGameClock(shown);

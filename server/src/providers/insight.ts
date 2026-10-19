@@ -37,7 +37,7 @@ export function formSummary(games: FormGame[], sport: string): string {
   return sport === "hockey" ? `${n("W")}-${n("L")}-${n("OTL")}` : n("T") ? `${n("W")}-${n("L")}-${n("T")}` : `${n("W")}-${n("L")}`;
 }
 
-type Stat = { value: number; perGame?: number };
+type Stat = { value: number; perGame?: number | undefined };
 /** name -> value for every stat in ESPN's team statistics (all categories). */
 export function parseTeamStats(json: Raw): Map<string, Stat> {
   const m = new Map<string, Stat>();
@@ -51,7 +51,7 @@ const NOUN: Record<string, string> = { hockey: "Goals", soccer: "Goals", basketb
 const f1 = (n: number) => n.toFixed(1);
 
 /** Mirrored comparison rows for the "recent form" screen. Hockey uses season team stats; every sport gets last-5 scoring. */
-export function buildFormRows(sport: string, home: { games: FormGame[]; stats?: Map<string, Stat> }, away: { games: FormGame[]; stats?: Map<string, Stat> }): StatRow[] {
+export function buildFormRows(sport: string, home: { games: FormGame[]; stats?: Map<string, Stat> | undefined }, away: { games: FormGame[]; stats?: Map<string, Stat> | undefined }): StatRow[] {
   const rows: StatRow[] = [];
   const add = (key: string, label: string, h: number | undefined, a: number | undefined, fmt: (n: number) => string, lower = false) => {
     if (h === undefined || a === undefined || !Number.isFinite(h) || !Number.isFinite(a)) return;

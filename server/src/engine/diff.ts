@@ -2,15 +2,15 @@ import type { Incident, ScoringPlay, Team, UiEventType, Game } from "../types.js
 
 export interface Detected {
   type: UiEventType;
-  team?: Team;
-  delta?: number;
-  play?: ScoringPlay;
-  period?: number;
-  incident?: Incident;
+  team?: Team | undefined;
+  delta?: number | undefined;
+  play?: ScoringPlay | undefined;
+  period?: number | undefined;
+  incident?: Incident | undefined;
   /** idempotency key for events that can repeat within a game (cards); persisted across restarts */
-  key?: string;
+  key?: string | undefined;
   /** deliberately NOT de-duplicated by key (goals, power plays); the engine guards these another way */
-  volatile?: boolean;
+  volatile?: boolean | undefined;
 }
 
 const PER_PLAY_SPORTS = new Set(["hockey", "soccer"]);

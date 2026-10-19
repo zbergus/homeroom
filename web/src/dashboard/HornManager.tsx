@@ -23,7 +23,7 @@ function Preview({ h }: { h: Horn }) {
   return <Button onClick={toggle} aria-label={`${on ? "Stop" : "Preview"} ${h.league} ${h.abbr} horn`}>{on ? "Stop" : "Preview"}</Button>;
 }
 
-export default function HornManager({ leagues, settings }: { leagues: string[]; settings?: Settings | null }) {
+export default function HornManager({ leagues, settings }: { leagues: string[]; settings?: Settings | null | undefined }) {
   const [horns, setHorns] = useState<Horn[]>([]);
   const [err, setErr] = useState("");
   const [league, setLeague] = useState("");

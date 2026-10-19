@@ -47,7 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: e.LOG_LEVEL,
     appKey: e.PUSHER_APP_KEY,
     appSecret: e.PUSHER_APP_SECRET,
-    webDir: e.WEB_DIR ?? path.resolve("../web/dist"),
+    webDir: path.resolve(e.WEB_DIR ?? "../web/dist"), // @fastify/static refuses a relative root
     adminToken: e.ADMIN_TOKEN,
     haApiKey: e.HOMEROOM_API_KEY,
     restoreGraceMs: e.HOMEROOM_RESTORE_GRACE_S * 1000,

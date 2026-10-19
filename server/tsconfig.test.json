@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    // tests index fixtures and mock calls freely and build partial objects on purpose; production code stays strict
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noUnusedParameters": false
+  },
   "include": ["src", "test", "vitest.config.ts"]
 }

@@ -97,6 +97,8 @@ export class LightRules {
     if (a.restore) before = await this.getState(channel, entity);
 
     const colors = this.colorsFor(a, ev);
+    const first = colors[0];
+    if (!first) return; // no colour to show
     // a white-only bulb (or a plug) cannot alternate colours or take one: the nearest honest effect is a blink
     const effects = effectList(dev);
     const wanted = a.effect === "light_effect" && a.light_effect && effects.includes(a.light_effect) ? a.light_effect : undefined;
@@ -104,8 +106,8 @@ export class LightRules {
     const effect = a.effect === "light_effect" ? (wanted ? "light_effect" : "flash") : !canColor && a.effect !== "flash" ? "flash" : a.effect;
     if (effect === "light_effect") send({ action: "set_effect", effect: wanted });
     else if (effect === "flash") send({ action: "flash", duration: a.duration, speed: a.speed });
-    else if (effect === "alternate") send({ action: "alternate", duration: a.duration, speed: a.speed, colors: colors.length > 1 ? colors : [colors[0], null] });
-    else send({ action: "set_color", rgb_color: arr(colors[0]) });
+    else if (effect === "alternate") send({ action: "alternate", duration: a.duration, speed: a.speed, colors: colors.length > 1 ? colors : [first, null] });
+    else send({ action: "set_color", rgb_color: arr(first) });
 
     if (a.restore && before && effect !== "flash") {
       // flash restores itself on the HA side; alternate / set_color do not

@@ -7,6 +7,9 @@ const BITRATES_V1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256
 const BITRATES_V2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
 const RATES: Record<number, number[]> = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
 
+/** Byte at `i`. Every caller has already checked the bounds, so the 0 is never actually read. */
+const at = (b: Uint8Array, i: number): number => b[i] ?? 0;
+
 interface FrameHeader {
   size: number;
   samples: number;
@@ -18,22 +21,23 @@ interface FrameHeader {
 /** Parse the 4-byte frame header at `pos`; undefined when it is not a valid Layer III header. */
 export function frameAt(b: Uint8Array, pos: number): FrameHeader | undefined {
   if (pos < 0 || pos + 4 > b.length) return undefined;
-  const h1 = b[pos + 1];
-  if (b[pos] !== 0xff || (h1 & 0xe0) !== 0xe0) return undefined;
+  const h1 = at(b, pos + 1);
+  if (at(b, pos) !== 0xff || (h1 & 0xe0) !== 0xe0) return undefined;
   const version = (h1 >> 3) & 3; // 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5, 1 = reserved
   if (version === 1) return undefined;
   if (((h1 >> 1) & 3) !== 1) return undefined; // Layer III only
-  const h2 = b[pos + 2];
+  const h2 = at(b, pos + 2);
   const bi = h2 >> 4;
   const si = (h2 >> 2) & 3;
   if (bi === 0 || bi === 15 || si === 3) return undefined; // free-format and bad indexes are not supported
   const mpeg1 = version === 3;
-  const bitrate = (mpeg1 ? BITRATES_V1 : BITRATES_V2)[bi] * 1000;
-  const sampleRate = RATES[version][si];
+  const bitrate = (mpeg1 ? BITRATES_V1 : BITRATES_V2)[bi] ?? 0;
+  const sampleRate = RATES[version]?.[si] ?? 0;
+  if (!bitrate || !sampleRate) return undefined;
   const pad = (h2 >> 1) & 1;
   const samples = mpeg1 ? 1152 : 576;
-  const size = Math.floor(((mpeg1 ? 144 : 72) * bitrate) / sampleRate) + pad;
-  const mono = (b[pos + 3] >> 6) === 3;
+  const size = Math.floor(((mpeg1 ? 144 : 72) * bitrate * 1000) / sampleRate) + pad;
+  const mono = (at(b, pos + 3) >> 6) === 3;
   const crc = (h1 & 1) === 0 ? 2 : 0;
   const side = mpeg1 ? (mono ? 17 : 32) : mono ? 9 : 17;
   return { size, samples, sampleRate, tagOffsets: [4 + crc + side, 4 + 32] };
@@ -41,13 +45,13 @@ export function frameAt(b: Uint8Array, pos: number): FrameHeader | undefined {
 
 /** Length of an ID3v2 tag at the start of the buffer (0 when absent). */
 function id3v2Length(b: Uint8Array): number {
-  if (b.length < 10 || b[0] !== 0x49 || b[1] !== 0x44 || b[2] !== 0x33) return 0;
-  if ((b[6] | b[7] | b[8] | b[9]) & 0x80) return 0;
-  const size = (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
-  return 10 + size + (b[5] & 0x10 ? 10 : 0);
+  if (b.length < 10 || at(b, 0) !== 0x49 || at(b, 1) !== 0x44 || at(b, 2) !== 0x33) return 0;
+  if ((at(b, 6) | at(b, 7) | at(b, 8) | at(b, 9)) & 0x80) return 0;
+  const size = (at(b, 6) << 21) | (at(b, 7) << 14) | (at(b, 8) << 7) | at(b, 9);
+  return 10 + size + (at(b, 5) & 0x10 ? 10 : 0);
 }
 
-const tagAt = (b: Uint8Array, p: number, s: string) => p + 4 <= b.length && s.split("").every((c, i) => b[p + i] === c.charCodeAt(0));
+const tagAt = (b: Uint8Array, p: number, s: string) => p + 4 <= b.length && s.split("").every((c, i) => at(b, p + i) === c.charCodeAt(0));
 
 interface Mp3Info {
   /** audio frames in order (the Xing/Info/VBRI metadata frame is excluded) */

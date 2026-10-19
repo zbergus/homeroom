@@ -20,7 +20,7 @@ export function useOverturned(match: (e: EventPayload) => boolean, ms = TOAST_MS
 }
 
 /** Small non-blocking banner at the top of the screen. */
-export function OverturnedToast({ event }: { event?: EventPayload }) {
+export function OverturnedToast({ event }: { event?: EventPayload | undefined }) {
   if (!event) return null;
   const team = event.team ?? event.game.home;
   const c = resolveTeam(team);

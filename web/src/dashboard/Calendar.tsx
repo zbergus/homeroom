@@ -11,7 +11,7 @@ import { errMsg } from "../lib/errors";
 type Day = { date: string; games: GameLite[] };
 
 function dayLabel(date: string) {
-  const [y, m, d] = date.split("-").map(Number);
+  const [y = 0, m = 1, d = 1] = date.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   return { dow: dt.toLocaleDateString([], { weekday: "short" }), dom: dt.getDate(), mon: dt.toLocaleDateString([], { month: "short" }) };
 }

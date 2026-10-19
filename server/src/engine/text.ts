@@ -17,16 +17,16 @@ export function scoringLabel(sport: string, delta: number, playText = ""): strin
   }
 }
 
-const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 interface TextCtx {
   game: Game;
-  card?: { kind: "yellow" | "red"; player?: string; clock: string };
-  team?: Team;
-  label?: string;
-  scorer?: string;
-  period?: number;
-  play?: ScoringPlay;
+  card?: { kind: "yellow" | "red"; player?: string | undefined; clock: string };
+  team?: Team | undefined;
+  label?: string | undefined;
+  scorer?: string | undefined;
+  period?: number | undefined;
+  play?: ScoringPlay | undefined;
 }
 
 export function naturalText(type: Exclude<UiEventType, "goal_overturned">, c: TextCtx): string {

@@ -12,13 +12,20 @@ export function normStrength(raw?: string, emptyNet = false): Strength | undefin
   return undefined;
 }
 
+/** The four digits of an NHL situationCode, or undefined when it is not one. */
+function situationDigits(code: string | undefined): [ag: number, as: number, hs: number, hg: number] | undefined {
+  const m = /^(\d)(\d)(\d)(\d)$/.exec(code ?? "");
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])] : undefined;
+}
+
 /**
  * NHL situationCode is 4 digits: [away goalie][away skaters][home skaters][home goalie] (1 = goalie in net).
  * Strength from the scoring team's point of view.
  */
 export function strengthFromSituation(code: string | undefined, scorerIsHome: boolean): Strength | undefined {
-  if (!code || !/^\d{4}$/.test(code)) return undefined;
-  const [ag, as, hs, hg] = code.split("").map(Number);
+  const digits = situationDigits(code);
+  if (!digits) return undefined;
+  const [ag, as, hs, hg] = digits;
   const own = scorerIsHome ? hs : as;
   const opp = scorerIsHome ? as : hs;
   const ownGoalie = scorerIsHome ? hg : ag;
@@ -42,8 +49,9 @@ interface ParsedSituation {
 
 /** Full read of an NHL situationCode ([away goalie][away skaters][home skaters][home goalie]). */
 export function parseSituation(code: string | undefined): ParsedSituation | undefined {
-  if (!code || !/^\d{4}$/.test(code)) return undefined;
-  const [ag, as, hs, hg] = code.split("").map(Number);
+  const digits = situationDigits(code);
+  if (!digits) return undefined;
+  const [ag, as, hs, hg] = digits;
   const bothGoalies = ag > 0 && hg > 0;
   return {
     home_skaters: hs,

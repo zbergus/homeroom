@@ -15,14 +15,14 @@ interface EventRecord {
   type: EventPayload["type"];
   league: string;
   game: string;
-  team?: string;
-  label?: string;
+  team?: string | undefined;
+  label?: string | undefined;
   triggers: string[];
   manual: boolean;
   delay_s: number;
   outcome: "delivered" | "filtered";
   /** why it was filtered, or a note on what was delivered */
-  reason?: string;
+  reason?: string | undefined;
   sent: { pusher_clients: number; rest: boolean; lights: number };
 }
 

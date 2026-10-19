@@ -10,7 +10,7 @@ const SCOPES: { id: NonNullable<Settings["horn_scope"]>; label: string }[] = [
 ];
 
 /** Horn length, fade, loudness and whose goals play one. The server trims on demand; the original files are never changed. */
-export default function HornLimits({ settings, saveNow, audio }: { settings: Settings; saveNow: (p: SettingsPatch) => Promise<void>; audio?: Status["audio"] }) {
+export default function HornLimits({ settings, saveNow, audio }: { settings: Settings; saveNow: (p: SettingsPatch) => Promise<void>; audio?: Status["audio"] | undefined }) {
   const [max, setMax] = useState(settings.horn_max_s == null ? "" : String(settings.horn_max_s));
   const [fade, setFade] = useState(String(settings.horn_fade_ms ?? 1500));
   const [norm, setNorm] = useState(!!settings.horn_normalize);

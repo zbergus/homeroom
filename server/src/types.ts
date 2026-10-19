@@ -14,7 +14,7 @@ export interface Team {
   logo: string;
   score: number;
   /** overall record as ESPN prints it, e.g. "4-3-1" */
-  record?: string;
+  record?: string | undefined;
   options: TeamColors;
 }
 
@@ -24,10 +24,10 @@ export interface ScoringPlay {
   period_label: string;
   clock: string;
   team_abbr: string;
-  scorer?: string;
+  scorer?: string | undefined;
   assists: string[];
-  strength?: string;
-  text?: string;
+  strength?: string | undefined;
+  text?: string | undefined;
   home_score: number;
   away_score: number;
 }
@@ -40,13 +40,13 @@ export interface StatRow {
   away: string;
   home_n: number;
   away_n: number;
-  lower_is_better?: boolean;
+  lower_is_better?: boolean | undefined;
 }
 
 /** One finished game from a team's recent schedule. */
 export interface FormGame {
   opp_abbr: string;
-  opp_logo?: string;
+  opp_logo?: string | undefined;
   venue: "H" | "A";
   gf: number;
   ga: number;
@@ -55,7 +55,7 @@ export interface FormGame {
 }
 
 export interface TeamForm {
-  record?: string;
+  record?: string | undefined;
   /** oldest first, up to 10 */
   games: FormGame[];
 }
@@ -65,9 +65,9 @@ export interface PlayerWatch {
   name: string;
   first: string;
   last: string;
-  jersey?: string;
-  position?: string;
-  headshot?: string;
+  jersey?: string | undefined;
+  position?: string | undefined;
+  headshot?: string | undefined;
   team_abbr: string;
   /** season tiles, e.g. GOALS 4 / ASSISTS 3 / POINTS 7 / SHOTS 26 */
   tiles: { label: string; value: string }[];
@@ -81,15 +81,15 @@ export interface LeaderRef {
   name: string;
   first: string;
   last: string;
-  jersey?: string;
-  position?: string;
-  headshot?: string;
+  jersey?: string | undefined;
+  position?: string | undefined;
+  headshot?: string | undefined;
 }
 
 /** Context data for break screens and the scoreboard side panel. Every part is optional. */
 export interface Insight {
   form?: { home: TeamForm; away: TeamForm; rows: StatRow[] };
-  players?: { home?: PlayerWatch; away?: PlayerWatch };
+  players?: { home?: PlayerWatch | undefined; away?: PlayerWatch | undefined };
   updated_at: number;
 }
 
@@ -99,7 +99,7 @@ export interface Incident {
   kind: "yellow" | "red";
   team_abbr: string;
   clock: string;
-  player?: string;
+  player?: string | undefined;
 }
 
 /** Skater situation from the NHL feed. `advantage` is the side on the power play (null = even or an empty net). */
@@ -121,9 +121,9 @@ export interface Game {
   period_label: string;
   clock: string;
   /** numeric clock for interpolation: seconds shown on the game clock, and whether it is running now */
-  clock_s?: number;
-  clock_running?: boolean;
-  clock_dir?: "down" | "up";
+  clock_s?: number | undefined;
+  clock_running?: boolean | undefined;
+  clock_dir?: "down" | "up" | undefined;
   intermission: boolean;
   home: Team;
   away: Team;
@@ -131,18 +131,18 @@ export interface Game {
   stats: { home: Record<string, string>; away: Record<string, string> };
   goals: ScoringPlay[];
   /** canonical per-sport comparison rows (from the boxscore); replaces the raw `stats` map for display */
-  stat_rows?: StatRow[];
-  insight?: Insight;
+  stat_rows?: StatRow[] | undefined;
+  insight?: Insight | undefined;
   /** season leaders from the scoreboard; input for "players to watch" (not shown directly) */
-  leaders?: { home?: LeaderRef; away?: LeaderRef };
+  leaders?: { home?: LeaderRef | undefined; away?: LeaderRef | undefined };
   /** soccer bookings seen so far */
-  incidents?: Incident[];
+  incidents?: Incident[] | undefined;
   /** hockey: current skater situation (NHL feed only) */
-  situation?: Situation;
-  odds?: { details?: string; over_under?: number };
+  situation?: Situation | undefined;
+  odds?: { details?: string | undefined; over_under?: number | undefined } | undefined;
   /** which provider currently owns score/period/clock for this game */
-  authority?: "espn" | "nhl";
-  nhl_id?: number;
+  authority?: "espn" | "nhl" | undefined;
+  nhl_id?: number | undefined;
 }
 
 export type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
@@ -157,27 +157,27 @@ export interface EventPayload {
   league: string;
   sport: string;
   game: Game;
-  team?: Team;
+  team?: Team | undefined;
   scoring?: {
     label: string;
-    scorer?: string;
+    scorer?: string | undefined;
     assists: string[];
-    strength?: string;
+    strength?: string | undefined;
     delta: number;
     home_score: number;
     away_score: number;
   };
   natural_text: string;
-  goal_horn?: string;
-  test?: boolean;
+  goal_horn?: string | undefined;
+  test?: boolean | undefined;
   /** fired by a person (button / hook / test), not by a game feed: bypasses the automation gates */
-  manual?: boolean;
+  manual?: boolean | undefined;
   /** the trigger id a person pressed (manual events only), so e.g. "win" fires without a favourite team */
-  trigger?: string;
+  trigger?: string | undefined;
   /** card events: who was booked */
-  card?: { kind: "yellow" | "red"; player?: string; clock: string };
+  card?: { kind: "yellow" | "red"; player?: string | undefined; clock: string };
   /** game_end only: abbreviation of the winning team, or "tie" */
-  winner?: string;
+  winner?: string | undefined;
 }
 
 export interface Settings {
@@ -218,14 +218,14 @@ export interface LightAction {
   id: string;
   enabled: boolean;
   /** legacy: event types. Superseded by `triggers`; migrated on read. */
-  on?: readonly string[];
+  on?: readonly string[] | undefined;
   /** trigger ids from engine/triggers.ts (goal, touchdown, basket3, win, period_end, ...) */
-  triggers?: string[];
+  triggers?: string[] | undefined;
   team_scope: "any" | "favorites" | "scoring_team";
   entities: string[];
   effect: "flash" | "alternate" | "set_color" | "light_effect";
   /** for effect "light_effect": the entity's own effect name (from capabilities.effect_list), e.g. a Hue "candle" */
-  light_effect?: string;
+  light_effect?: string | undefined;
   duration: number;
   speed: number;
   colors: "team" | Rgb[];

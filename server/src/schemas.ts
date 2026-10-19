@@ -90,7 +90,7 @@ const ActionSchema = z.object({
   light_effect: z.string().max(100).optional(),
   duration: z.number().finite().default(3),
   speed: z.number().finite().default(5),
-  colors: z.union([z.literal("team"), z.array(RgbSchema).max(10)]).default("team"),
+  colors: z.union([z.literal("team"), z.array(RgbSchema).min(1).max(10)]).default("team"),
   restore: z.boolean().default(false),
 });
 export const ActionListSchema = z.array(ActionSchema).max(200);

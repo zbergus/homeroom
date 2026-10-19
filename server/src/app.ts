@@ -13,18 +13,18 @@ import { isCrossSite } from "./security.js";
 import { Store } from "./store.js";
 
 interface AppOptions {
-  store?: Store;
+  store?: Store | undefined;
   appKey: string;
   appSecret: string;
   webDir: string;
   /** listen on this port (0 = ephemeral); omit to build without listening */
-  port?: number;
-  startPoller?: boolean;
+  port?: number | undefined;
+  startPoller?: boolean | undefined;
   /** defaults to `loadConfig()` (the process environment) */
-  config?: Config;
-  engineDeps?: ConstructorParameters<typeof Engine>[2];
+  config?: Config | undefined;
+  engineDeps?: ConstructorParameters<typeof Engine>[2] | undefined;
   /** tests inject a HornService with a fake ffmpeg runner and a temp cache */
-  horns?: HornService;
+  horns?: HornService | undefined;
 }
 
 export interface App {

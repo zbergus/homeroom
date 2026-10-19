@@ -26,7 +26,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Watermark({ text, right }: { text: string; right?: boolean }) {
+function Watermark({ text, right }: { text: string; right?: boolean | undefined }) {
   return (
     <span aria-hidden className={`${D} pointer-events-none absolute select-none font-black leading-none`} style={{ fontSize: U(34), opacity: .07, bottom: U(-4), [right ? "right" : "left"]: U(-2) }}>{text}</span>
   );
@@ -48,7 +48,7 @@ function Headshot({ p, team, size }: { p: PlayerWatch; team: Team; size: number 
   );
 }
 
-function PlayerHalf({ team, c, p, right }: { team: Team; c: SideColors; p?: PlayerWatch; right: boolean }) {
+function PlayerHalf({ team, c, p, right }: { team: Team; c: SideColors; p?: PlayerWatch | undefined; right: boolean }) {
   const K = U;
   const k = 1;
   const maxV = Math.max(1, ...(p?.log ?? []).map((l) => l.value));
@@ -137,7 +137,7 @@ const recordOf = (games: FormGame[]) => {
   return [n("W"), n("L"), n("OTL")].join("-");
 };
 
-function FormPanel({ team, c, form, scale, row }: { team: Team; c: SideColors; form?: TeamForm; scale: number; row: boolean }) {
+function FormPanel({ team, c, form, scale, row }: { team: Team; c: SideColors; form?: TeamForm | undefined; scale: number; row: boolean }) {
   const last5 = (form?.games ?? []).slice(-5);
   const K = (n: number) => U(n * scale);
   const max = Math.max(1, ...last5.flatMap((g) => [g.gf, g.ga]));
@@ -216,7 +216,7 @@ export function FormScreen({ game }: { game: Game }) {
 
 /* ------------------------------------------------------------------ Game stats */
 
-function LineScore({ game, size = 1.8 }: { game: Game; size?: number }) {
+function LineScore({ game, size = 1.8 }: { game: Game; size?: number | undefined }) {
   const n = Math.max(game.linescores.home.length, game.linescores.away.length);
   if (!n) return null;
   const cols = Array.from({ length: n }, (_, i) => i);
@@ -335,7 +335,7 @@ function GoalCard({ p, team, c, dense, outlined, isHome }: { p: ScoringPlay; tea
   );
 }
 
-export function SummaryScreen({ game, final }: { game: Game; final?: boolean }) {
+export function SummaryScreen({ game, final }: { game: Game; final?: boolean | undefined }) {
   const o = useOrientation();
   const portrait = o === "portrait";
   const { away, home } = resolveMatchup(game.away, game.home);
