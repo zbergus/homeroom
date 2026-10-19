@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** One transient message in a polite live region. Returns [node, show]. */
 export function useToast(): [React.ReactNode, (text: string, kind?: "ok" | "err") => void] {
   const [t, setT] = useState<{ text: string; kind: "ok" | "err"; n: number } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const show = useCallback((text: string, kind: "ok" | "err" = "ok") => {
     clearTimeout(timer.current);
