@@ -16,6 +16,7 @@ import KioskLinks from "../dashboard/KioskLinks";
 import Leagues from "../dashboard/Leagues";
 import ManualTriggers from "../dashboard/ManualTriggers";
 import Next24h from "../dashboard/Next24h";
+import SimulationPanel, { type SimStatus } from "../dashboard/SimulationPanel";
 import StatusPanel, { HEALTH_CLS, healthOf } from "../dashboard/StatusPanel";
 import Tabs, { loadTab, saveTab } from "../dashboard/Tabs";
 import { usePoll } from "../dashboard/usePoll";
@@ -47,12 +48,18 @@ export default function Dashboard() {
   const [err, setErr] = useState("");
   const [saveErr, setSaveErr] = useState("");
   const [token, setToken] = useState(getAdminToken());
+  const [sim, setSim] = useState<SimStatus>({ active: false });
   const latest = useRef<Settings | null>(null);
   const pending = useRef<Partial<Settings>>({});
 
   const schedule = usePoll(() => api.schedule(7), 60_000);
-  const status = usePoll(api.status, tab === "setup" ? 5000 : 20_000);
+  const status = usePoll(api.status, tab === "setup" || sim.active ? 5000 : 20_000);
   const health = healthOf(status);
+
+  useEffect(() => {
+    const active = status.data?.simulation?.active;
+    if (typeof active === "boolean") setSim((prev) => (prev.active === active && prev.game_id === status.data?.simulation?.game_id ? prev : { ...status.data!.simulation! }));
+  }, [status.data?.simulation]);
 
   const setTab = useCallback((k: TabKey) => { setTabState(k); saveTab(k); window.scrollTo({ top: 0 }); }, []);
   const gotoStatus = () => { setTab("setup"); setTimeout(() => document.getElementById("status")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); };
@@ -110,6 +117,7 @@ export default function Dashboard() {
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-lg font-black">H</span>
             <h1 className="text-xl font-black tracking-tight">Homeroom</h1>
             {isMockUrl() && <span className="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-bold text-violet-300">MOCK DATA</span>}
+            {sim.active && <span className="rounded bg-amber-500/25 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-200" role="status">Simulation — not live</span>}
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-400">
             <button type="button" onClick={gotoStatus} aria-label={`System health: ${HEALTH_TEXT[health]}. Open status and diagnostics`} title={`${HEALTH_TEXT[health]}. Open status and diagnostics`}
@@ -132,6 +140,7 @@ export default function Dashboard() {
         </>)}
         {panel("alerts", settings ? <>
           <DelayPanel settings={settings} update={update} games={scheduled} sync={sync} leagues={enabledLeagueIds} live={liveGames} active={tab === "alerts"} />
+          <SimulationPanel onChange={setSim} />
           <Automation settings={settings} saveNow={saveNow} />
           <ManualTriggers triggers={triggers} triggersErr={triggersErr} leagues={leagues} hasToken={hasToken} />
           <DevicesActions triggers={triggers} />

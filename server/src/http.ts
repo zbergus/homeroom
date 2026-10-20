@@ -285,6 +285,19 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return { ok: true, event: fire({ trigger: "goal", league: b.league, team_abbr: b.team_abbr, apply_delay: b.bypass_delay === false }) };
   });
 
+  app.get("/api/simulation", async () => engine.simulationStatus());
+
+  app.post("/api/simulation/start", async (_req, reply) => {
+    try {
+      return engine.startSimulation();
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 500).send({ error: err.message });
+    }
+  });
+
+  app.post("/api/simulation/stop", async () => engine.stopSimulation());
+
   app.get("/api/events/recent", async (req) => dispatcher.log.recent(clampInt((req.query as { n?: unknown | undefined }).n, 50, 1, 100)));
 
   let hornCheck: { at: number; ok: boolean | null; detail: string } | undefined;
@@ -351,6 +364,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
       audio: { ffmpeg: audioMode === "ffmpeg", mode: audioMode },
       public_base_url: s.public_base_url,
       flags: { my_team_only: s.my_team_only, automations_enabled: s.automations_enabled, auto_sync_favorites: s.auto_sync_favorites },
+      simulation: engine.simulationStatus(),
       warnings,
     };
   });

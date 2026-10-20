@@ -55,6 +55,10 @@ export class UiHub {
   event(e: EventPayload): void {
     this.broadcast({ t: "event", event: e });
   }
+  /** Replace every viewer's game map (e.g. after simulation stop removes nhl:sim). */
+  snapshot(): void {
+    this.broadcast({ t: "snapshot", games: [...this.engine.shown.values()], settings: this.publicSettings() });
+  }
 
   private broadcast(msg: unknown): void {
     const s = JSON.stringify(msg);

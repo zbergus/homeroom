@@ -56,6 +56,7 @@ export async function createApp(o: AppOptions): Promise<App> {
   // Everything below runs *after* the stream-sync delay.
   engine.on("game", (g) => ui.game(g));
   engine.on("event", (e) => dispatcher.handle(e));
+  engine.on("refresh", () => ui.snapshot());
   // events that were still inside the delay window when the process last stopped
   const restored = engine.restore();
   if (restored.requeued || restored.dropped) console.log(`[engine] restored ${restored.requeued} pending event(s), dropped ${restored.dropped} stale`);

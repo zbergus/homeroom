@@ -6,7 +6,7 @@ import { useKiosk, useNow, useOrientation, useQueryParam } from "../lib/hooks";
 import { countdown, shortPeriod, startMs, whenLabel } from "../lib/format";
 import { resolveMatchup, type SideColors } from "../lib/colors";
 import { useGameClock } from "../lib/clock";
-import { ConnDot, TeamBadge } from "../components/Kiosk";
+import { ConnDot, SimBadge, TeamBadge } from "../components/Kiosk";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { OverturnedToast, useOverturned } from "../kiosk/Toast";
 import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick } from "../kiosk/kioskState";
@@ -557,6 +557,7 @@ export default function Plate() {
       {body}
       <OverturnedToast event={overturned} />
       <GoalOverlay event={goal.current} pending={goal.pending} />
+      <SimBadge active={all.some((g) => g.id === "nhl:sim")} />
       <ConnDot conn={conn} />
     </div>
   );

@@ -30,7 +30,8 @@ export default function ManualTriggers({ triggers, triggersErr, leagues, hasToke
     setBusy(t.id);
     try {
       const r = await api.trigger({ trigger: t.id, ...(league ? { league } : {}), ...(team ? { team_abbr: team } : {}), apply_delay: delay });
-      show(`Fired ${t.label}${r.event?.type ? ` (event: ${r.event.type})` : ""}${delay ? ", with stream delay" : ", immediately"}.`);
+      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : "";
+      show(`Fired ${t.label}${r.event?.type ? ` (event: ${r.event.type})` : ""}${delay ? ", with stream delay" : ", immediately"}.${say}`);
     } catch (e) { show(`${t.label} failed: ${errMsg(e)}`, "err"); } finally { setBusy(""); }
   };
   const hook = (t: Trigger) => {
@@ -48,7 +49,7 @@ export default function ManualTriggers({ triggers, triggersErr, leagues, hasToke
 
   const groups = groupTriggers(triggers);
   return (
-    <Card title="Manual buttons" subtitle="Fire an event yourself: you saw the play, so it goes out immediately unless you tick the delay box. Ignores My team only and Disable automations.">
+    <Card title="Manual buttons" subtitle="Fire an event yourself (immediately unless you tick delay). Toast shows the TTS line. Only Goal plays a horn; cards and power plays speak when the HA integration supports them.">
       {triggersErr && <Notice kind="err">Could not load triggers: {triggersErr}</Notice>}
       <div className="mb-4 grid gap-3 sm:grid-cols-3 sm:items-end">
         <Field label="League (optional)" htmlFor="mt-league">

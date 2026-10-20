@@ -19,17 +19,34 @@ export default function DelayPanel({ settings, update, games, sync, leagues, liv
   const label = (id: string) => { const x = games.find((q) => q.id === id); return x ? `${x.away.abbr} @ ${x.home.abbr} (${x.league.toUpperCase()})` : id; };
   const candidates = games.filter((x) => (sync.games.includes(x.id) || x.status === "in") && !(x.id in by));
 
-  const test = async () => {
+  const testGoal = async () => {
     setBusy(true); setMsg(null);
-    try { await api.trigger({ trigger: "goal" }); setMsg({ k: "ok", t: "Test goal fired (immediately, stream delay not applied)." }); }
-    catch (e) { setMsg({ k: "err", t: `Test goal failed: ${errMsg(e)}` }); }
+    try {
+      const r = await api.trigger({ trigger: "goal" });
+      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : "";
+      setMsg({ k: "ok", t: `Test goal fired (horn + TTS; scorer is Test Player).${say}` });
+    } catch (e) { setMsg({ k: "err", t: `Test goal failed: ${errMsg(e)}` }); }
+    finally { setBusy(false); }
+  };
+  const testTts = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.trigger({ trigger: "period_start" });
+      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : " (no spoken line — is TTS enabled?)";
+      setMsg({ k: "ok", t: `Test TTS fired (no horn).${say}` });
+    } catch (e) { setMsg({ k: "err", t: `Test TTS failed: ${errMsg(e)}` }); }
     finally { setBusy(false); }
   };
   const leagueRules = Object.entries(byL).map(([l, v]) => `${l.toUpperCase()} ${fmtDelay(v)} s`);
 
   return (
     <Card title="Stream delay" subtitle="Match the TV broadcast so alerts never spoil the play."
-      actions={<Button variant="primary" onClick={test} disabled={busy}>Test Goal Alert</Button>}>
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => void testGoal()} disabled={busy}>Test Goal Alert</Button>
+          <Button onClick={() => void testTts()} disabled={busy}>Test TTS</Button>
+        </div>
+      }>
       <div className="flex flex-col gap-5">
         {msg && <Notice kind={msg.k}>{msg.t}</Notice>}
         <div className="flex flex-col gap-3">

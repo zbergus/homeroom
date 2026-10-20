@@ -47,7 +47,11 @@ export const api = {
   settings: () => call<Settings>("GET", "/api/settings"),
   putSettings: (s: SettingsPatch) => call<Settings>("PUT", "/api/settings", s),
   triggers: async () => arr<Trigger>(await call("GET", "/api/triggers"), "triggers"),
-  trigger: (b: { trigger: string; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined }) => call<{ ok: boolean; event?: { type?: string | undefined; event_id?: string | undefined } }>("POST", "/api/trigger", b),
+  trigger: (b: { trigger: string; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined }) =>
+    call<{ ok: boolean; event?: { type?: string | undefined; event_id?: string | undefined; natural_text?: string | undefined } }>("POST", "/api/trigger", b),
+  simulation: () => call<{ active: boolean; game_id?: string | undefined; started_at?: number | undefined; ends_at?: number | undefined; step_index?: number | undefined }>("GET", "/api/simulation"),
+  simulationStart: () => call<{ active: boolean; game_id: string; ends_at: number }>("POST", "/api/simulation/start"),
+  simulationStop: () => call<{ active: boolean }>("POST", "/api/simulation/stop"),
   status: () => call<Status>("GET", "/api/status"),
   recentEvents: async (n = 50) => arr<EventRecord>(await call("GET", `/api/events/recent?n=${n}`), "events"),
   gamesRaw: async () => arr<Game>(await call("GET", "/api/games/raw"), "games"),

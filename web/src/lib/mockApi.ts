@@ -31,9 +31,12 @@ function mock<T>(method: string, path: string, body?: unknown): T {
     return (ab[l] ?? []).map((abbr) => ({ abbr, name: abbr })) as T;
   }
   if (p === "/api/triggers") return [{ id: "any_score", label: "Any score" }, { id: "goal", label: "Goal", sports: ["hockey", "soccer"] }, { id: "touchdown", label: "Touchdown", sports: ["football"] }, { id: "game_end", label: "Game end" }] as T;
-  if (p === "/api/status") return { version: "mock", uptime_s: 60, games: { tracked: 3, live: 1, synced: 1 }, integration: { links: [], devices: 0 }, outputs: { rest_events: false, pusher_connected: false }, horns: { files: 0, url_check: { ok: null, detail: "mock" } }, public_base_url: "", flags: { my_team_only: false, automations_enabled: true, auto_sync_favorites: true }, warnings: ["Mock mode: no server."], server_time: Date.now(), providers: [{ id: "espn:nhl", last_success_at: Date.now() - 2000, last_attempt_at: Date.now() - 2000, last_error: null, last_error_at: null, consecutive_failures: 0, failing_since: null, live_relevant: true, state: "ok" }, { id: "nhl", last_success_at: Date.now() - 1000, last_attempt_at: Date.now() - 1000, last_error: null, last_error_at: null, consecutive_failures: 0, failing_since: null, live_relevant: true, state: "ok" }] } as T;
+  if (p === "/api/status") return { version: "mock", uptime_s: 60, games: { tracked: 3, live: 1, synced: 1 }, integration: { links: [], devices: 0 }, outputs: { rest_events: false, pusher_connected: false }, horns: { files: 0, url_check: { ok: null, detail: "mock" } }, public_base_url: "", flags: { my_team_only: false, automations_enabled: true, auto_sync_favorites: true }, simulation: { active: false }, warnings: ["Mock mode: no server."], server_time: Date.now(), providers: [{ id: "espn:nhl", last_success_at: Date.now() - 2000, last_attempt_at: Date.now() - 2000, last_error: null, last_error_at: null, consecutive_failures: 0, failing_since: null, live_relevant: true, state: "ok" }, { id: "nhl", last_success_at: Date.now() - 1000, last_attempt_at: Date.now() - 1000, last_error: null, last_error_at: null, consecutive_failures: 0, failing_since: null, live_relevant: true, state: "ok" }] } as T;
   if (p === "/api/events/recent" || p === "/api/games/raw") return [] as T;
-  if (p === "/api/trigger") return { ok: true, event: { type: "goal" } } as T;
+  if (p === "/api/trigger") return { ok: true, event: { type: "goal", natural_text: "Goal, City Wild! Test Player scores. Wild 1, Blue Jackets 0." } } as T;
+  if (p === "/api/simulation") return { active: false } as T;
+  if (p === "/api/simulation/start") return { active: true, game_id: "nhl:sim", ends_at: Date.now() + 600_000 } as T;
+  if (p === "/api/simulation/stop") return { active: false } as T;
   if (p === "/api/horns") return mem.horns as T;
   if (p === "/api/ha/test") return { ok: true, message: "mock: ok" } as T;
   return {} as T;
