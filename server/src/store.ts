@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   poll_idle_s: 1800,
   poll_live_s: 2.5,
   nhl_fast_poll_ms: 1000,
+  mlb_fast_poll_ms: 2500,
   enabled_leagues: LEAGUES.filter((l) => !l.optIn).map((l) => l.id),
   grid_leagues: ["nhl", "nfl", "nba", "mlb"],
   public_base_url: process.env.PUBLIC_BASE_URL ?? "",

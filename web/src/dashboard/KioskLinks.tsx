@@ -5,6 +5,7 @@ import { copyText } from "../lib/clipboard";
 
 const VIEWS = [
   { path: "/scoreboard?game=auto", name: "Scoreboard", desc: "Full-screen scoreboard for your synced game" },
+  { path: "/plate?game=auto", name: "Scoreboard Plate", desc: "Compact scoreboard plate for secondary screens (Pi / small monitor) without break-screen takeovers" },
   { path: "/grid", name: "SportsGrid", desc: "Every game on one screen. Add ?only=mine to show only your teams and synced games." },
   { path: "/grid?only=mine", name: "SportsGrid (my teams)", desc: "Only games for your favourite teams and synced games; follows changes you make here" },
   { path: "/ticker", name: "Ticker", desc: "LED-style scrolling scores (add ?only=mine for your teams)" },

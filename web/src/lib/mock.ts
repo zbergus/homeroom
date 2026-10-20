@@ -8,8 +8,9 @@ interface Seed {
   rec?: [string | undefined, string];
 }
 
-const t = (id: string, [abbr, name, city, p, s]: Seed["home"]): Team => ({
+const t = (id: string, [abbr, name, city, p, s]: Seed["home"], league = "nhl"): Team => ({
   id, abbr, name, display_name: `${city} ${name}`, score: 0,
+  logo: `https://a.espncdn.com/i/teamlogos/${league === "epl" ? "soccer" : league}/500/${abbr.toLowerCase()}.png`,
   options: {
     primary_color_rgb: { r: p[0], g: p[1], b: p[2] },
     secondary_color_rgb: { r: s[0], g: s[1], b: s[2] },
@@ -140,8 +141,8 @@ function mkStatRows(s: Seed): StatRow[] | undefined {
 }
 
 function build(s: Seed): Game {
-  const away = t(`${s.id}-a`, s.away);
-  const home = t(`${s.id}-h`, s.home);
+  const away = t(`${s.id}-a`, s.away, s.league);
+  const home = t(`${s.id}-h`, s.home, s.league);
   away.score = s.as; home.score = s.hs;
   away.record = s.rec?.[0]; home.record = s.rec?.[1];
   const label = periodLabel(s.sport, s.period, s.clock);
@@ -155,6 +156,22 @@ function build(s: Seed): Game {
   };
   const clockSecs = (c: string) => { const [m = NaN, sec = NaN] = c.split(":").map(Number); return Number.isFinite(m) && Number.isFinite(sec) ? m * 60 + sec : undefined; };
   if (s.sport === "soccer" && s.status === "in") { g.clock_s = 67 * 60 + 12; g.clock_dir = "up"; g.clock_running = true; }
+  else if (s.sport === "baseball" && s.status === "in") {
+    g.clock = "Top 6th";
+    g.baseball_situation = {
+      inning: s.period,
+      half: "top",
+      inning_state: "Top",
+      balls: 1,
+      strikes: 2,
+      outs: 1,
+      on_first: true,
+      on_second: false,
+      on_third: true,
+      batter: "A. Judge",
+      pitcher: "B. Bello",
+    };
+  }
   else if (s.sport !== "baseball") { g.clock_s = clockSecs(s.clock); g.clock_dir = "down"; g.clock_running = s.status === "in" && !s.intermission; }
   if (s.sport === "hockey") g.insight = mkInsight(s);
   if (s.status !== "pre") g.stat_rows = mkStatRows(s);

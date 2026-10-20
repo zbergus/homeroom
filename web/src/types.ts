@@ -113,7 +113,11 @@ export interface Game {
   stat_rows?: StatRow[] | undefined;
   insight?: Insight | undefined;
   football_situation?: FootballSituation | undefined;
+  baseball_situation?: BaseballSituation | undefined;
   odds?: unknown | undefined;
+  authority?: "espn" | "nhl" | "mlb" | undefined;
+  nhl_id?: number | undefined;
+  mlb_id?: number | undefined;
 }
 
 /** Football down, distance and possession situation (ESPN scoreboard). */
@@ -124,6 +128,21 @@ export interface FootballSituation {
   down_distance_text?: string | undefined;
   possession?: string | undefined; // team abbreviation
   is_red_zone?: boolean | undefined;
+}
+
+/** Baseball inning, count, outs and runners situation (MLB Stats API). */
+export interface BaseballSituation {
+  inning: number;
+  half: "top" | "bottom";
+  inning_state: string; // "Top", "Bottom", "Middle", "End"
+  balls: number;
+  strikes: number;
+  outs: number;
+  on_first: boolean;
+  on_second: boolean;
+  on_third: boolean;
+  batter?: string | undefined;
+  pitcher?: string | undefined;
 }
 
 /** /api/schedule row (assumed: Game fields, possibly without live detail). */
@@ -157,6 +176,7 @@ export interface EventPayload {
   natural_text?: string | undefined;
   goal_horn?: string | undefined;
   football?: FootballSituation | undefined;
+  baseball?: BaseballSituation | undefined;
 }
 
 export interface League {
@@ -193,6 +213,7 @@ export interface Settings {
   poll_idle_s?: number | undefined;
   poll_live_s?: number | undefined;
   nhl_fast_poll_ms?: number | undefined;
+  mlb_fast_poll_ms?: number | undefined;
   ha: HASettings;
   enabled_leagues?: string[] | undefined;
   grid_leagues?: string[] | undefined;

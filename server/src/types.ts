@@ -119,6 +119,21 @@ export interface FootballSituation {
   is_red_zone?: boolean | undefined;
 }
 
+/** Baseball inning, count, outs and runners situation (MLB Stats API). */
+export interface BaseballSituation {
+  inning: number;
+  half: "top" | "bottom";
+  inning_state: string; // "Top", "Bottom", "Middle", "End"
+  balls: number;
+  strikes: number;
+  outs: number;
+  on_first: boolean;
+  on_second: boolean;
+  on_third: boolean;
+  batter?: string | undefined;
+  pitcher?: string | undefined;
+}
+
 export type GameStatus = "pre" | "in" | "post";
 
 export interface Game {
@@ -151,10 +166,13 @@ export interface Game {
   situation?: Situation | undefined;
   /** football: current down, distance, line of scrimmage and possession (ESPN scoreboard) */
   football_situation?: FootballSituation | undefined;
+  /** baseball: current inning, count, outs, base runners and batter/pitcher (MLB Stats API) */
+  baseball_situation?: BaseballSituation | undefined;
   odds?: { details?: string | undefined; over_under?: number | undefined } | undefined;
   /** which provider currently owns score/period/clock for this game */
-  authority?: "espn" | "nhl" | undefined;
+  authority?: "espn" | "nhl" | "mlb" | undefined;
   nhl_id?: number | undefined;
+  mlb_id?: number | undefined;
 }
 
 export type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
@@ -190,6 +208,8 @@ export interface EventPayload {
   card?: { kind: "yellow" | "red"; player?: string | undefined; clock: string };
   /** football situation details for first_down / third_down events */
   football?: FootballSituation | undefined;
+  /** baseball situation details for scoring plays (MLB Stats API) */
+  baseball?: BaseballSituation | undefined;
   /** game_end only: abbreviation of the winning team, or "tie" */
   winner?: string | undefined;
 }
@@ -200,6 +220,7 @@ export interface Settings {
   poll_idle_s: number;
   poll_live_s: number;
   nhl_fast_poll_ms: number;
+  mlb_fast_poll_ms: number;
   enabled_leagues: string[];
   grid_leagues: string[];
   public_base_url: string;

@@ -1,5 +1,6 @@
 import { LEAGUES } from "../leagues.js";
 import { fetchScoreboard, fetchScoreboardDay } from "../providers/espn.js";
+import { fetchMlbGame, fetchMlbScores, matchMlb } from "../providers/mlb.js";
 import { fetchNhlGame, fetchNhlScores, matchNhl, withOfficialStrength } from "../providers/nhl.js";
 import type { Game } from "../types.js";
 import type { Engine } from "./engine.js";
@@ -57,6 +58,7 @@ export class Poller {
       if (g.status !== "in" || !this.relevant(g)) continue;
       ids.add(`espn:${g.league}`);
       if (g.league === "nhl") ids.add("nhl");
+      if (g.league === "mlb") ids.add("mlb");
       if (this.engine.isSynced(g.id)) ids.add("summary");
     }
     return ids;
@@ -68,7 +70,15 @@ export class Poller {
 
   providerWarnings(): string[] {
     return this.health.warnings(this.liveProviders(), (id) =>
-      id.startsWith("espn:") ? `The ESPN ${id.slice(5).toUpperCase()} feed` : id === "nhl" ? "The NHL feed" : id === "summary" ? "The ESPN game summary feed" : `The ${id} feed`,
+      id.startsWith("espn:")
+        ? `The ESPN ${id.slice(5).toUpperCase()} feed`
+        : id === "nhl"
+        ? "The NHL feed"
+        : id === "mlb"
+        ? "The MLB Stats API feed"
+        : id === "summary"
+        ? "The ESPN game summary feed"
+        : `The ${id} feed`,
     );
   }
 
@@ -76,6 +86,7 @@ export class Poller {
     this.stopped = false;
     for (const l of LEAGUES) this.loop(`espn:${l.id}`, () => this.tickEspn(l.id), () => this.espnInterval(l.id));
     this.loop("nhl", () => this.tickNhl(), () => this.nhlInterval());
+    this.loop("mlb", () => this.tickMlb(), () => this.mlbInterval());
     this.loop("summary", () => this.tickSummary(), () => SUMMARY_INTERVAL_MS);
     this.loop("insight", () => this.tickInsight(), () => INSIGHT_INTERVAL_MS);
     this.gcTimer = setInterval(() => {
@@ -211,6 +222,48 @@ export class Poller {
         }
       }
       this.engine.ingestNhl(g.id, feed);
+    }
+  }
+
+  // ---- MLB fast poller -----------------------------------------------------------------------
+  private mlbActive(): boolean {
+    if (!this.engine.settings.enabled_leagues.includes("mlb")) return false;
+    const now = Date.now();
+    for (const g of this.engine.games.values()) {
+      if (g.league !== "mlb" || !this.relevant(g)) continue;
+      if (g.status === "in") return true;
+      if (g.status === "pre" && Date.parse(g.start_time) - now < 3 * 60_000 && Date.parse(g.start_time) - now > -3600e3) return true;
+    }
+    return false;
+  }
+
+  private mlbInterval(): number {
+    return this.mlbActive() ? (this.engine.settings.mlb_fast_poll_ms ?? 2500) : 5_000;
+  }
+
+  async tickMlb(): Promise<void> {
+    if (!this.mlbActive()) return;
+    const mlb = await this.health.track("mlb", () => fetchMlbScores());
+    for (const g of this.engine.games.values()) {
+      if (g.league !== "mlb" || !this.relevant(g)) continue;
+      if (!g.mlb_id) {
+        const m = matchMlb(g, mlb);
+        if (m) g.mlb_id = m.id;
+      }
+      const m = mlb.find((x) => x.id === g.mlb_id);
+      if (!m) continue;
+      if (g.status === "post" && m.state === "post") continue;
+      let feed = m;
+      // Fetch detailed live feed for synced live games every tick, and for any game whose scoring plays lag
+      if (m.state === "in" && (this.engine.isSynced(g.id) || m.goals.length < m.homeScore + m.awayScore)) {
+        try {
+          const full = await this.health.track("mlb", () => fetchMlbGame(m.id), false);
+          feed = { ...m, goals: full.goals.length >= m.goals.length ? full.goals : m.goals, situation: full.situation ?? m.situation };
+        } catch (err) {
+          log("mlb", "live feed unavailable, using schedule scores:", errMsg(err));
+        }
+      }
+      this.engine.ingestMlb(g.id, feed);
     }
   }
 

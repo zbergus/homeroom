@@ -1,7 +1,7 @@
 import { leagueById, periodLabel } from "../leagues.js";
 import type { Game, ScoringPlay, Team, UiEventType } from "../types.js";
 
-export function scoringLabel(sport: string, delta: number, playText = ""): string {
+export function scoringLabel(sport: string, delta: number, playText = "", strength = ""): string {
   switch (sport) {
     case "football":
       if (delta >= 6) return "TOUCHDOWN";
@@ -11,7 +11,7 @@ export function scoringLabel(sport: string, delta: number, playText = ""): strin
     case "basketball":
       return "BASKET";
     case "baseball":
-      return /home run|homers|grand slam/i.test(playText) ? "HOME RUN" : "RUN";
+      return strength === "HR" || /home run|homers|grand slam/i.test(playText) ? "HOME RUN" : "RUN";
     default:
       return "GOAL";
   }

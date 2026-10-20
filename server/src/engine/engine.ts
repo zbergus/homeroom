@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { isShootout, leagueById, periodLabel } from "../leagues.js";
 import { fetchSummary, type Summary } from "../providers/espn.js";
 import { buildInsight } from "../providers/insight.js";
+import { fetchMlbGame, type MlbGame } from "../providers/mlb.js";
 import type { NhlGame } from "../providers/nhl.js";
 import { MEDIA_DIR, type Store } from "../store.js";
 import type { EventPayload, Game, Insight, Rgb, ScoringPlay, Settings, Team, UiEventType } from "../types.js";
@@ -17,6 +18,7 @@ import { errMsg } from "../security.js";
 type Out = { kind: "game"; game: Game } | { kind: "event"; payload: EventPayload };
 
 const NHL_AUTHORITY_MS = 10_000;
+const MLB_AUTHORITY_MS = 15_000;
 const FLAP_WINDOW_MS = 120_000;
 const OVERTURN_WINDOW_MS = 5 * 60_000;
 const OVERTURN_CONFIRM_MS = 20_000;
@@ -44,6 +46,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   private buffer: DelayBuffer<Out>;
   private chains = new Map<string, Promise<void>>();
   private nhlSeen = new Map<string, number>();
+  private mlbSeen = new Map<string, number>();
   private lastDecrease = new Map<string, { home: number; away: number; at: number }>();
   private settingsCache?: Settings | undefined;
   private synced?: Set<string> | undefined;
@@ -61,16 +64,18 @@ export class Engine extends EventEmitter<EngineEvents> {
   providerReport: (id: string, ok: boolean, err?: unknown) => void = () => {};
 
   private fetchSummary: typeof fetchSummary;
+  private fetchMlbGame: typeof fetchMlbGame;
   private buildInsight: (g: Game) => Promise<Insight | undefined>;
   private retryMs: number;
 
   constructor(
     readonly store: Store,
     private now: () => number = () => Date.now(),
-    deps: { fetchSummary?: typeof fetchSummary | undefined; buildInsight?: (g: Game) => Promise<Insight | undefined>; retryMs?: number | undefined; restoreGraceMs?: number | undefined } = {},
+    deps: { fetchSummary?: typeof fetchSummary | undefined; fetchMlbGame?: typeof fetchMlbGame | undefined; buildInsight?: (g: Game) => Promise<Insight | undefined>; retryMs?: number | undefined; restoreGraceMs?: number | undefined } = {},
   ) {
     super();
     this.fetchSummary = deps.fetchSummary ?? fetchSummary;
+    this.fetchMlbGame = deps.fetchMlbGame ?? fetchMlbGame;
     this.buildInsight = deps.buildInsight ?? ((g) => buildInsight(g));
     this.retryMs = deps.retryMs ?? 1500;
     this.restoreGraceMs = deps.restoreGraceMs ?? 10_000;
@@ -122,21 +127,24 @@ export class Engine extends EventEmitter<EngineEvents> {
   /** Feed a fresh ESPN snapshot of a game. */
   ingestEspn(incoming: Game): void {
     const prev = this.games.get(incoming.id);
-    let next = incoming;
+    let next: Game = { ...incoming, authority: incoming.authority ?? "espn" };
     if (prev) {
       next = {
         ...incoming,
         nhl_id: prev.nhl_id,
+        mlb_id: prev.mlb_id,
         // soccer's scoreboard already lists goals with scorers; for other sports they come from enrichment
         goals: incoming.goals.length ? incoming.goals : prev.goals,
         stat_rows: prev.stat_rows,
         insight: prev.insight,
         situation: prev.situation,
+        baseball_situation: prev.baseball_situation,
         authority: "espn",
       };
-      const fresh = prev.authority === "nhl" && this.now() - (this.nhlSeen.get(prev.id) ?? 0) < NHL_AUTHORITY_MS;
-      if (fresh) {
-        // NHL feed owns the live fields; ESPN only contributes presentation data
+      const freshNhl = prev.authority === "nhl" && this.now() - (this.nhlSeen.get(prev.id) ?? 0) < NHL_AUTHORITY_MS;
+      const freshMlb = prev.authority === "mlb" && this.now() - (this.mlbSeen.get(prev.id) ?? 0) < MLB_AUTHORITY_MS;
+      if (freshNhl || freshMlb) {
+        // Authoritative feed owns the live fields; ESPN only contributes presentation data
         next = {
           ...next,
           status: prev.status,
@@ -149,7 +157,7 @@ export class Engine extends EventEmitter<EngineEvents> {
           intermission: prev.intermission,
           home: { ...next.home, score: prev.home.score },
           away: { ...next.away, score: prev.away.score },
-          authority: "nhl",
+          authority: freshNhl ? "nhl" : "mlb",
         };
       }
     }
@@ -180,6 +188,34 @@ export class Engine extends EventEmitter<EngineEvents> {
       situation: status === "in" ? (n.situation ?? prev.situation) : undefined,
       authority: "nhl",
       nhl_id: n.id,
+    };
+    this.commit(prev, next);
+  }
+
+  /** Overlay an MLB Stats API feed snapshot on top of the ESPN-derived game. */
+  ingestMlb(gameId: string, m: MlbGame): void {
+    const prev = this.games.get(gameId);
+    if (!prev) return;
+    this.mlbSeen.set(gameId, this.now());
+    const league = leagueById(prev.league);
+    const abbr = (a: string) => (a === m.homeAbbr ? prev.home.abbr : a === m.awayAbbr ? prev.away.abbr : a);
+    const status = m.state === "pre" ? prev.status : m.state;
+    const next: Game = {
+      ...prev,
+      status,
+      period: status === "pre" ? 0 : m.inning,
+      period_label: status === "pre" ? "" : m.inningState ? `${m.inningState} ${periodLabel(league, m.inning)}` : periodLabel(league, m.inning),
+      clock: status === "in" && m.situation ? `${m.situation.inning_state} ${m.inning}` : "",
+      clock_s: undefined,
+      clock_running: false,
+      clock_dir: undefined,
+      intermission: status === "in" && m.inIntermission,
+      home: { ...prev.home, score: m.homeScore },
+      away: { ...prev.away, score: m.awayScore },
+      goals: m.goals.length >= prev.goals.length ? m.goals.map((g) => ({ ...g, team_abbr: abbr(g.team_abbr) })) : prev.goals,
+      baseball_situation: m.situation ?? prev.baseball_situation,
+      authority: "mlb",
+      mlb_id: m.id,
     };
     this.commit(prev, next);
   }
@@ -342,7 +378,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (o.test) payload.test = true;
     if (type === "goal" && o.team) {
       const delta = o.delta ?? 1;
-      const label = scoringLabel(game.sport, delta, o.play?.text);
+      const label = scoringLabel(game.sport, delta, o.play?.text, o.play?.strength);
       payload.team = o.team;
       payload.scoring = {
         label,
@@ -355,6 +391,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       };
       payload.natural_text = naturalText("goal", { game, team: o.team, label, scorer: o.play?.scorer });
       payload.goal_horn = this.hornUrl(game, o.team);
+      if (game.sport === "baseball") payload.baseball = game.baseball_situation;
     } else if (type === "card" && o.incident) {
       payload.team = o.team;
       payload.card = { kind: o.incident.kind, player: o.incident.player, clock: o.incident.clock };
@@ -382,6 +419,18 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   /** Scorer lookup: ESPN summary lags the score by a few seconds, so retry briefly. */
   private async findPlay(game: Game, det: Detected): Promise<ScoringPlay | undefined> {
+    if (game.league === "mlb" && game.mlb_id) {
+      try {
+        const mlbGame = await this.fetchMlbGame(game.mlb_id);
+        this.providerReport("mlb", true);
+        const known = new Set((this.games.get(game.id)?.goals ?? []).map((g) => g.key));
+        const fresh = mlbGame.goals.filter((p) => p.team_abbr === det.team?.abbr && !known.has(p.key));
+        const hit = fresh[fresh.length - 1];
+        if (hit) return hit;
+      } catch (err) {
+        this.providerReport("mlb", false, err);
+      }
+    }
     for (let i = 0; i < 3; i++) {
       try {
         const summary = await this.fetchSummary(game.id, this.idsOf(game));
@@ -420,7 +469,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   private applySummary(gameId: string, s: Summary): void {
     const g = this.games.get(gameId);
     if (!g) return;
-    const goals = s.plays.length >= g.goals.length ? s.plays : g.goals;
+    const goals = g.authority === "mlb" && g.goals.length ? g.goals : s.plays.length >= g.goals.length ? s.plays : g.goals;
     const stat_rows = s.rows.length ? s.rows : g.stat_rows;
     const sameGoals = goals.length === g.goals.length && goals.every((p, i) => p.key === g.goals[i]?.key && p.scorer === g.goals[i]?.scorer);
     const sameRows = JSON.stringify(stat_rows) === JSON.stringify(g.stat_rows);

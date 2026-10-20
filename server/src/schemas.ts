@@ -50,6 +50,7 @@ export const SettingsPatchSchema = z.object({
   poll_idle_s: z.number().positive().finite().optional(),
   poll_live_s: z.number().min(1, "must be >= 1").finite().optional(),
   nhl_fast_poll_ms: z.number().min(250, "must be >= 250").finite().optional(),
+  mlb_fast_poll_ms: z.number().min(250, "must be >= 250").finite().optional(),
   enabled_leagues: z.array(leagueId).optional(),
   grid_leagues: z.array(leagueId).optional(),
   public_base_url: optionalUrl.optional(),

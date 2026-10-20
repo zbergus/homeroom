@@ -1,9 +1,9 @@
 import { useRef } from "react";
-import type { Game, GameLite, SyncState, Team } from "../types";
+import type { Game, GameLite, Team } from "../types";
 import { useLive } from "../lib/live";
 import { isMine, useNextMine, useSync } from "../lib/mine";
 import { useKiosk, useNow, useOrientation, useQueryParam, useTicker } from "../lib/hooks";
-import { countdown, shortPeriod, startMs, timeLabel, whenLabel } from "../lib/format";
+import { countdown, shortPeriod, startMs, whenLabel } from "../lib/format";
 import { resolveMatchup, type SideColors } from "../lib/colors";
 import { useGameClock } from "../lib/clock";
 import { ConnDot, TeamBadge } from "../components/Kiosk";
@@ -13,26 +13,16 @@ import { rowsFor } from "../components/StatBars";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { OverturnedToast, useOverturned } from "../kiosk/Toast";
 import { FormScreen, PlayersScreen, StatsScreen, SummaryScreen, hasForm, hasPlayers } from "../kiosk/Breaks";
+import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick } from "../kiosk/kioskState";
+import PlateView from "./Plate";
 
-const FINAL_MS = 10 * 60_000;
+export { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick };
+
 const BREAK_ROTATE_MS = 15_000;
-const PRE_WINDOW_MS = 60 * 60_000;
 const U = (n: number) => `calc(var(--u) * ${n})`;
 
 type Step = "live" | "countdown" | "players" | "form" | "stats" | "summary";
 const STEPS: Step[] = ["live", "countdown", "players", "form", "stats", "summary"];
-
-function pick(games: Game[], want: string, sync: SyncState | null | undefined, finalSeen: Map<string, number>, now: number): Game | undefined {
-  if (want !== "auto") return games.find((g) => g.id === want);
-  const pool = !sync ? [] : games.filter((g) => (sync.effective ?? sync.games).includes(g.id));
-  const rank = (g: Game) =>
-    g.status === "in" ? (g.intermission ? 1 : 0)
-    : g.status === "pre" ? 2
-    : now - (finalSeen.get(g.id) ?? now) < FINAL_MS ? 3 : 9;
-  return [...pool]
-    .filter((g) => rank(g) < 9)
-    .sort((a, b) => rank(a) - rank(b) || startMs(a) - startMs(b))[0];
-}
 
 /** Which screens rotate for this game (screens with missing data are skipped). */
 function stepsFor(g: Game): Step[] {
@@ -172,30 +162,10 @@ function SidePanelFill({ game, maxRows, size }: { game: Game; maxRows: number; s
   return <div className="flex min-h-0 flex-1 flex-col [&>aside]:flex-1"><SidePanel game={game} maxRows={maxRows} size={size} /></div>;
 }
 
-/** `next` is decided by the caller: in auto mode only my games count, never another league's slate. */
-function IdleScreen({ next, now, loading }: { next: GameLite | null | undefined; now: number; loading?: boolean }) {
-  return (
-    <div className="fade-in absolute inset-0 flex flex-col items-center justify-center text-center text-white" style={{ background: "radial-gradient(80% 80% at 50% 40%, #16203a, #07090f)", gap: U(2.5) }}>
-      <div className="font-black tracking-[.3em] opacity-50" style={{ fontSize: U(3) }}>HOMEROOM</div>
-      {next ? (
-        <>
-          <div className="uppercase tracking-[.25em] opacity-70 font-bold" style={{ fontSize: U(2.2) }}>Next game</div>
-          <div className="flex items-center" style={{ gap: U(3) }}>
-            <TeamBadge team={next.away} size={U(11)} />
-            <span className="font-black" style={{ fontSize: U(4.5) }}>{next.away.abbr} @ {next.home.abbr}</span>
-            <TeamBadge team={next.home} size={U(11)} />
-          </div>
-          <div className="num font-black" style={{ fontSize: U(12) }}>{countdown(startMs(next) - now)}</div>
-          <div className="opacity-70" style={{ fontSize: U(2.4) }}>{new Date(startMs(next)).toLocaleDateString([], { weekday: "long" })} {timeLabel(startMs(next))}</div>
-        </>
-      ) : (
-        !loading && <div className="opacity-70" style={{ fontSize: U(4) }}>No upcoming games for your teams</div>
-      )}
-    </div>
-  );
-}
-
 export default function Scoreboard() {
+  const plate = useQueryParam("plate") === "1" || useQueryParam("view") === "plate";
+  if (plate) return <PlateView />;
+
   useKiosk();
   const want = useQueryParam("game") ?? "auto";
   const forced = useQueryParam("screen") as Step | null; // debug: live|countdown|players|form|stats|summary
