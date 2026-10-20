@@ -21,6 +21,7 @@ const FLAP_WINDOW_MS = 120_000;
 const OVERTURN_WINDOW_MS = 5 * 60_000;
 const OVERTURN_CONFIRM_MS = 20_000;
 const POWERPLAY_REPEAT_MS = 20_000;
+const DOWN_REPEAT_MS = 15_000;
 /** a restored `shown` snapshot older than this is dropped (the game state it shows would be misleading) */
 const SHOWN_MAX_AGE_MS = 10 * 60_000;
 const SHOWN_PERSIST_EVERY_MS = 5_000;
@@ -49,6 +50,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   private favs?: Set<string> | undefined;
   private updatedAt = new Map<string, number>();
   private ppLast = new Map<string, number>();
+  private downLast = new Map<string, number>();
   private goalTimes = new Map<string, { abbr: string; at: number }[]>();
   private overrides = new Map<string, Partial<Team["options"]>>();
   private shownSaved = new Map<string, { at: number; status: string }>();
@@ -304,6 +306,11 @@ export class Engine extends EventEmitter<EngineEvents> {
         if (this.now() - (this.ppLast.get(k) ?? -Infinity) < POWERPLAY_REPEAT_MS) continue;
         this.ppLast.set(k, this.now());
       }
+      if (det.type === "first_down" || det.type === "third_down") {
+        const k = `${game.id}:${det.type}:${det.team?.abbr}`;
+        if (this.now() - (this.downLast.get(k) ?? -Infinity) < DOWN_REPEAT_MS) continue;
+        this.downLast.set(k, this.now());
+      }
       let play = det.play;
       if (det.type === "goal" && !play?.scorer) play = (await this.findPlay(game, det)) ?? play;
       if (det.type === "period_end" || det.type === "game_end") this.refreshAfterBreak(game.id);
@@ -355,6 +362,10 @@ export class Engine extends EventEmitter<EngineEvents> {
     } else if (type === "powerplay") {
       payload.team = o.team;
       payload.natural_text = naturalText("powerplay", { game, team: o.team });
+    } else if (type === "first_down" || type === "third_down") {
+      payload.team = o.team;
+      payload.football = game.football_situation;
+      payload.natural_text = naturalText(type, { game, team: o.team });
     } else {
       payload.natural_text = naturalText(type, { game, period: o.period });
       if (type === "game_end") {
@@ -460,7 +471,8 @@ export class Engine extends EventEmitter<EngineEvents> {
    * already seen the play on their screen. `apply_delay` routes it through the stream-sync buffer.
    */
   fireTrigger(opts: { trigger?: string | undefined; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined } = {}): EventPayload {
-    const trigger = opts.trigger ?? "goal";
+    const raw = opts.trigger ?? "goal";
+    const trigger = raw === "1st_down" ? "first_down" : raw === "3rd_down" ? "third_down" : raw;
     const spec = MANUAL_SPECS[trigger];
     if (!spec) throw new Error(`unknown trigger "${trigger}"`);
     const leagueId = opts.league ?? opts.game_id?.split(":")[0] ?? spec.league;

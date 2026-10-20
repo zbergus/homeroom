@@ -156,6 +156,28 @@ export function normalizeEvent(league: LeagueDef, ev: Raw): Game | undefined {
     game.goals = t.goals;
     game.incidents = t.incidents;
   }
+  if (league.sport === "football" && comp.situation) {
+    const sit = comp.situation;
+    const possRaw = str(sit.possession);
+    const homeId = str(homeC.team?.id ?? homeC.id);
+    const awayId = str(awayC.team?.id ?? awayC.id);
+    const possTeam =
+      possRaw === homeId || possRaw === game.home.abbr
+        ? game.home.abbr
+        : possRaw === awayId || possRaw === game.away.abbr
+          ? game.away.abbr
+          : undefined;
+    if (typeof sit.down === "number" && sit.down > 0) {
+      game.football_situation = {
+        down: sit.down,
+        distance: typeof sit.distance === "number" ? sit.distance : 0,
+        yard_line: typeof sit.yardLine === "number" ? sit.yardLine : undefined,
+        down_distance_text: optStr(sit.downDistanceText ?? sit.shortDownDistanceText),
+        possession: possTeam,
+        is_red_zone: !!sit.isRedZone,
+      };
+    }
+  }
   return game;
 }
 

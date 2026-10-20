@@ -72,6 +72,26 @@ export function diffGame(prev: Game | undefined, next: Game, minDelta: number): 
     out.push({ type: "powerplay", team: adv === "home" ? next.home : next.away, period: next.period, volatile: true });
   }
 
+  // football 1st down (offense) and 3rd down (defense)
+  if (next.sport === "football" && next.status === "in" && next.football_situation && prev?.football_situation) {
+    const cur = next.football_situation;
+    const old = prev.football_situation;
+    const offTeam = cur.possession === next.home.abbr ? next.home : cur.possession === next.away.abbr ? next.away : undefined;
+    const defTeam = offTeam === next.home ? next.away : offTeam === next.away ? next.home : undefined;
+
+    const isNewFirstDown =
+      cur.down === 1 &&
+      (old.down !== 1 || old.possession !== cur.possession || (old.down_distance_text !== cur.down_distance_text && old.yard_line !== cur.yard_line));
+    if (isNewFirstDown && offTeam) {
+      out.push({ type: "first_down", team: offTeam, period: next.period, volatile: true });
+    }
+
+    const isNewThirdDown = cur.down === 3 && old.down !== 3;
+    if (isNewThirdDown && defTeam) {
+      out.push({ type: "third_down", team: defTeam, period: next.period, volatile: true });
+    }
+  }
+
   if (prev.status === "in" && next.status === "post") out.push({ type: "game_end" });
 
   return out;

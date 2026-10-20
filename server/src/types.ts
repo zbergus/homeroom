@@ -109,6 +109,16 @@ interface Situation {
   away_skaters: number;
 }
 
+/** Football down, distance and possession situation (ESPN scoreboard). */
+export interface FootballSituation {
+  down: number;
+  distance: number;
+  yard_line?: number | undefined;
+  down_distance_text?: string | undefined;
+  possession?: string | undefined; // team abbreviation
+  is_red_zone?: boolean | undefined;
+}
+
 export type GameStatus = "pre" | "in" | "post";
 
 export interface Game {
@@ -139,6 +149,8 @@ export interface Game {
   incidents?: Incident[] | undefined;
   /** hockey: current skater situation (NHL feed only) */
   situation?: Situation | undefined;
+  /** football: current down, distance, line of scrimmage and possession (ESPN scoreboard) */
+  football_situation?: FootballSituation | undefined;
   odds?: { details?: string | undefined; over_under?: number | undefined } | undefined;
   /** which provider currently owns score/period/clock for this game */
   authority?: "espn" | "nhl" | undefined;
@@ -147,7 +159,7 @@ export interface Game {
 
 export type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
 /** UI/REST-only informational events that the HA integration has no handler for */
-export type UiEventType = EventType | "goal_overturned" | "card" | "powerplay";
+export type UiEventType = EventType | "goal_overturned" | "card" | "powerplay" | "first_down" | "third_down";
 
 export interface EventPayload {
   event_id: string;
@@ -176,6 +188,8 @@ export interface EventPayload {
   trigger?: string | undefined;
   /** card events: who was booked */
   card?: { kind: "yellow" | "red"; player?: string | undefined; clock: string };
+  /** football situation details for first_down / third_down events */
+  football?: FootballSituation | undefined;
   /** game_end only: abbreviation of the winning team, or "tie" */
   winner?: string | undefined;
 }

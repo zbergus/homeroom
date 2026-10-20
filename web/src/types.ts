@@ -112,7 +112,18 @@ export interface Game {
   /** canonical comparison rows from the boxscore; prefer over `stats` when present */
   stat_rows?: StatRow[] | undefined;
   insight?: Insight | undefined;
+  football_situation?: FootballSituation | undefined;
   odds?: unknown | undefined;
+}
+
+/** Football down, distance and possession situation (ESPN scoreboard). */
+export interface FootballSituation {
+  down: number;
+  distance: number;
+  yard_line?: number | undefined;
+  down_distance_text?: string | undefined;
+  possession?: string | undefined; // team abbreviation
+  is_red_zone?: boolean | undefined;
 }
 
 /** /api/schedule row (assumed: Game fields, possibly without live detail). */
@@ -121,7 +132,7 @@ export type GameLite = Pick<Game, "id" | "league" | "sport" | "status" | "start_
 
 type EventType = "goal" | "game_start" | "game_end" | "period_start" | "period_end";
 /** informational, UI/REST only */
-type UiEventType = EventType | "goal_overturned";
+type UiEventType = EventType | "goal_overturned" | "card" | "powerplay" | "first_down" | "third_down";
 
 export interface Scoring {
   label: string;
@@ -145,6 +156,7 @@ export interface EventPayload {
   scoring?: Scoring | undefined;
   natural_text?: string | undefined;
   goal_horn?: string | undefined;
+  football?: FootballSituation | undefined;
 }
 
 export interface League {

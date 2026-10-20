@@ -22,6 +22,8 @@ interface TriggerDef {
 const isGoal = (ev: EventPayload) => ev.type === "goal";
 const label = (ev: EventPayload, ...l: string[]) => isGoal(ev) && l.includes(ev.scoring?.label ?? "");
 const basket = (ev: EventPayload, delta: number) => isGoal(ev) && ev.sport === "basketball" && ev.scoring?.delta === delta;
+const isFirstDown = (ev: EventPayload) => ev.type === "first_down";
+const isThirdDown = (ev: EventPayload) => ev.type === "third_down";
 
 export const TRIGGERS: TriggerDef[] = [
   { id: "any_score", label: "Any score", match: isGoal },
@@ -30,6 +32,8 @@ export const TRIGGERS: TriggerDef[] = [
   { id: "field_goal", label: "Field goal", sports: ["football"], match: (ev) => label(ev, "FIELD GOAL") },
   { id: "extra_point", label: "Extra point", sports: ["football"], match: (ev) => label(ev, "EXTRA POINT") },
   { id: "safety", label: "Safety", sports: ["football"], match: (ev) => label(ev, "SAFETY") },
+  { id: "first_down", label: "1st down (offense)", sports: ["football"], match: isFirstDown },
+  { id: "third_down", label: "3rd down (defense)", sports: ["football"], match: isThirdDown },
   { id: "basket", label: "Basket", sports: ["basketball"], match: (ev) => label(ev, "BASKET") },
   { id: "basket_ft", label: "Free throw", sports: ["basketball"], match: (ev) => basket(ev, 1) },
   { id: "basket_2", label: "2-pointer", sports: ["basketball"], match: (ev) => basket(ev, 2) },
@@ -47,6 +51,10 @@ export const TRIGGERS: TriggerDef[] = [
 ];
 
 const BY_ID = new Map(TRIGGERS.map((t) => [t.id, t]));
+const fDown = BY_ID.get("first_down");
+if (fDown) BY_ID.set("1st_down", fDown);
+const tDown = BY_ID.get("third_down");
+if (tDown) BY_ID.set("3rd_down", tDown);
 
 export const isTriggerId = (id: string): boolean => BY_ID.has(id);
 
@@ -83,6 +91,8 @@ export const MANUAL_SPECS: Record<string, ManualSpec> = {
   run: { type: "goal", league: "mlb", delta: 1 },
   home_run: { type: "goal", league: "mlb", delta: 1, playText: "homered" },
   powerplay: { type: "powerplay", league: "nhl" },
+  first_down: { type: "first_down", league: "nfl" },
+  third_down: { type: "third_down", league: "nfl" },
   yellow_card: { type: "card", league: "epl", card: "yellow" },
   red_card: { type: "card", league: "epl", card: "red" },
   win: { type: "game_end", league: "nhl" },

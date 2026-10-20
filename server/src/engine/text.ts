@@ -50,6 +50,10 @@ export function naturalText(type: Exclude<UiEventType, "goal_overturned">, c: Te
     }
     case "powerplay":
       return `Power play, ${c.team?.display_name ?? ""}.`.trim();
+    case "first_down":
+      return `First down, ${c.team?.display_name ?? ""}.`.trim();
+    case "third_down":
+      return `Third down defense, ${c.team?.display_name ?? ""}.`.trim();
     case "game_start":
       return `${a.display_name} at ${h.display_name} is starting.`;
     case "period_start":

@@ -2,9 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildStatRows } from "../src/providers/boxscore.js";
+import { normalizeEvent } from "../src/providers/espn.js";
 import { matchNhl, normalizeNhl, parsePbp } from "../src/providers/nhl.js";
 import { parseSituation, strengthFromSituation } from "../src/providers/strength.js";
 import { diffGame } from "../src/engine/diff.js";
+import { matchesAny, triggersFor } from "../src/engine/triggers.js";
+import { INTERNAL_ONLY } from "../src/outputs/dispatch.js";
+import { leagueById } from "../src/leagues.js";
 import type { Game, Team } from "../src/types.js";
 
 const fx = (name: string) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8"));
@@ -176,8 +180,9 @@ describe("Live feed validation (PIT @ UTA, game 2026020140)", () => {
   });
 });
 
-describe("Live NFL situation feed validation", () => {
+describe("Live NFL situation feed and trigger validation", () => {
   const nflSit = fx("espn-nfl-situation-live.json");
+  const nflBoard = fx("espn-nfl-scoreboard.json");
 
   it("verifies live NFL scoreboard situation structure", () => {
     expect(nflSit.situation).toBeDefined();
@@ -186,5 +191,160 @@ describe("Live NFL situation feed validation", () => {
     expect(nflSit.situation.downDistanceText).toBe("3rd & 22 at SF 40");
     expect(nflSit.situation.possession).toBe("28");
     expect(nflSit.situation.lastPlay).toBeDefined();
+  });
+
+  it("normalizes live NFL situation into Game.football_situation", () => {
+    const rawEv = structuredClone(nflBoard.events[0]);
+    rawEv.competitions[0].situation = nflSit.situation;
+    // ensure competitor with id "28" is WSH
+    const comp = rawEv.competitions[0];
+    comp.competitors[1].team.id = "28";
+    comp.competitors[1].team.abbreviation = "WSH";
+
+    const game = normalizeEvent(leagueById("nfl"), rawEv);
+    expect(game).toBeDefined();
+    expect(game?.football_situation).toBeDefined();
+    expect(game?.football_situation?.down).toBe(3);
+    expect(game?.football_situation?.distance).toBe(22);
+    expect(game?.football_situation?.down_distance_text).toBe("3rd & 22 at SF 40");
+    expect(game?.football_situation?.possession).toBe("WSH");
+  });
+
+  it("diffGame emits third_down for defense when transitioning to 3rd down", () => {
+    const base: Game = {
+      id: "nfl:401873008",
+      league: "nfl",
+      sport: "football",
+      status: "in",
+      start_time: new Date().toISOString(),
+      period: 4,
+      period_label: "4th",
+      clock: "01:00",
+      intermission: false,
+      home: makeTeam("28", "SF", "49ers", "San Francisco 49ers", 23),
+      away: makeTeam("30", "WSH", "Commanders", "Washington Commanders", 17),
+      linescores: { home: [], away: [] },
+      stats: { home: {}, away: {} },
+      goals: [],
+      football_situation: {
+        down: 2,
+        distance: 10,
+        possession: "WSH",
+        down_distance_text: "2nd & 10 at SF 28",
+      },
+    };
+
+    const next: Game = {
+      ...base,
+      clock: "00:06",
+      football_situation: {
+        down: 3,
+        distance: 22,
+        possession: "WSH",
+        down_distance_text: "3rd & 22 at SF 40",
+      },
+    };
+
+    const dets = diffGame(base, next, 1);
+    const third = dets.find((d) => d.type === "third_down");
+    expect(third).toBeDefined();
+    // Defense is SF (opponent of WSH with possession)
+    expect(third?.team?.abbr).toBe("SF");
+  });
+
+  it("diffGame emits first_down for offense when converting to 1st down", () => {
+    const base: Game = {
+      id: "nfl:401873008",
+      league: "nfl",
+      sport: "football",
+      status: "in",
+      start_time: new Date().toISOString(),
+      period: 4,
+      period_label: "4th",
+      clock: "02:00",
+      intermission: false,
+      home: makeTeam("28", "SF", "49ers", "San Francisco 49ers", 23),
+      away: makeTeam("30", "WSH", "Commanders", "Washington Commanders", 17),
+      linescores: { home: [], away: [] },
+      stats: { home: {}, away: {} },
+      goals: [],
+      football_situation: {
+        down: 3,
+        distance: 2,
+        possession: "WSH",
+        down_distance_text: "3rd & 2 at SF 45",
+      },
+    };
+
+    const next: Game = {
+      ...base,
+      clock: "01:30",
+      football_situation: {
+        down: 1,
+        distance: 10,
+        possession: "WSH",
+        down_distance_text: "1st & 10 at SF 35",
+      },
+    };
+
+    const dets = diffGame(base, next, 1);
+    const first = dets.find((d) => d.type === "first_down");
+    expect(first).toBeDefined();
+    // Offense is WSH (team with possession)
+    expect(first?.team?.abbr).toBe("WSH");
+  });
+
+  it("triggers and internal dispatching rules handle down events properly", () => {
+    expect(INTERNAL_ONLY.has("first_down")).toBe(true);
+    expect(INTERNAL_ONLY.has("third_down")).toBe(true);
+
+    const dummyGame: Game = {
+      id: "nfl:1",
+      league: "nfl",
+      sport: "football",
+      status: "in",
+      start_time: new Date().toISOString(),
+      period: 1,
+      period_label: "1st",
+      clock: "10:00",
+      intermission: false,
+      home: makeTeam("1", "SF", "49ers", "San Francisco 49ers", 0),
+      away: makeTeam("2", "WSH", "Commanders", "Washington Commanders", 0),
+      linescores: { home: [], away: [] },
+      stats: { home: {}, away: {} },
+      goals: [],
+    };
+
+    const ev1 = {
+      event_id: "evt_1",
+      type: "first_down" as const,
+      emitted_at: Date.now(),
+      delay_s: 0,
+      league: "nfl",
+      sport: "football",
+      game: dummyGame,
+      team: dummyGame.away,
+      natural_text: "First down, Washington Commanders.",
+    };
+
+    const ev3 = {
+      event_id: "evt_2",
+      type: "third_down" as const,
+      emitted_at: Date.now(),
+      delay_s: 0,
+      league: "nfl",
+      sport: "football",
+      game: dummyGame,
+      team: dummyGame.home,
+      natural_text: "Third down defense, San Francisco 49ers.",
+    };
+
+    const ctx = { favorites: new Set<string>() };
+    expect(matchesAny(["first_down"], ev1, ctx)).toBe(true);
+    expect(matchesAny(["1st_down"], ev1, ctx)).toBe(true);
+    expect(matchesAny(["third_down"], ev3, ctx)).toBe(true);
+    expect(matchesAny(["3rd_down"], ev3, ctx)).toBe(true);
+    expect(triggersFor(ev1, ctx)).toContain("first_down");
+    expect(triggersFor(ev3, ctx)).toContain("third_down");
   });
 });

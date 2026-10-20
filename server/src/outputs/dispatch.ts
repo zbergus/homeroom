@@ -7,7 +7,7 @@ import type { UiHub } from "./ui.js";
 import { errMsg } from "../security.js";
 
 /** Events the HA integration has no handler for: they reach the TV, REST path and light rules, never the Pusher channel. */
-export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "card", "powerplay"]);
+export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "card", "powerplay", "first_down", "third_down"]);
 
 interface EventRecord {
   at: number;
@@ -61,7 +61,7 @@ export class Dispatcher {
       const favs = this.engine.favoriteSet();
       if (favs.size === 0) return { ok: false, reason: "my team only is on but no favourite team is set" };
       const mine = (abbr?: string) => !!abbr && favs.has(`${ev.league}:${abbr}`);
-      if (ev.type === "goal" || ev.type === "goal_overturned" || ev.type === "card" || ev.type === "powerplay") {
+      if (ev.type === "goal" || ev.type === "goal_overturned" || ev.type === "card" || ev.type === "powerplay" || ev.type === "first_down" || ev.type === "third_down") {
         if (!mine(ev.team?.abbr)) return { ok: false, reason: "my team only: not a favourite team's score" };
       } else if (!mine(ev.game.home.abbr) && !mine(ev.game.away.abbr)) {
         return { ok: false, reason: "my team only: no favourite team in this game" };
