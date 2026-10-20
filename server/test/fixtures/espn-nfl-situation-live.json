@@ -1,0 +1,56 @@
+{
+  "situation": {
+    "lastPlay": {
+      "id": "4018730084170",
+      "type": {
+        "id": "21",
+        "text": "Timeout",
+        "abbreviation": "TO"
+      },
+      "text": "Timeout #1 by SF at 00:06.",
+      "scoreValue": 0,
+      "team": {
+        "id": "28"
+      },
+      "probability": {
+        "tiePercentage": 0,
+        "homeWinPercentage": 0.9887,
+        "awayWinPercentage": 0.011299999999999977,
+        "secondsLeft": 0
+      },
+      "statYardage": 0,
+      "drive": {
+        "description": "5 plays, 14 yards, 0:46",
+        "start": {
+          "yardLine": 54,
+          "text": "WSH 46"
+        },
+        "timeElapsed": {
+          "displayValue": "0:46"
+        }
+      },
+      "start": {
+        "yardLine": 40,
+        "team": {
+          "id": "28"
+        }
+      },
+      "end": {
+        "yardLine": 40,
+        "team": {
+          "id": "28"
+        }
+      }
+    },
+    "down": 3,
+    "yardLine": 40,
+    "distance": 22,
+    "downDistanceText": "3rd & 22 at SF 40",
+    "shortDownDistanceText": "3rd & 22",
+    "possessionText": "SF 40",
+    "isRedZone": false,
+    "homeTimeouts": 2,
+    "awayTimeouts": 0,
+    "possession": "28"
+  }
+}
