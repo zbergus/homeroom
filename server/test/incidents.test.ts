@@ -83,8 +83,9 @@ describe("card events", () => {
     expect(matchesAny(["yellow_card"], red, { favorites: new Set() })).toBe(false);
   });
 
-  it("cards and power plays are never published to the HA integration, but reach the TV and lights", () => {
-    expect(INTERNAL_ONLY.has("card") && INTERNAL_ONLY.has("powerplay") && INTERNAL_ONLY.has("goal_overturned")).toBe(true);
+  it("cards and power plays publish to the HA integration (patched ConnectedRoom speaks them); overturns stay internal", () => {
+    expect(INTERNAL_ONLY.has("goal_overturned")).toBe(true);
+    expect(INTERNAL_ONLY.has("card") || INTERNAL_ONLY.has("powerplay")).toBe(false);
     const calls = { ui: 0, pusher: 0, lights: 0 };
     const store = new Store(":memory:");
     const engine = new Engine(store);
@@ -93,7 +94,7 @@ describe("card events", () => {
     d.handle(ev);
     expect(ev.type).toBe("card");
     expect(ev.manual).toBe(true);
-    expect(calls).toEqual({ ui: 1, pusher: 0, lights: 1 });
+    expect(calls).toEqual({ ui: 1, pusher: 1, lights: 1 });
   });
 });
 

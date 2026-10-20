@@ -6,8 +6,11 @@ import type { LightRules } from "./lights.js";
 import type { UiHub } from "./ui.js";
 import { errMsg } from "../security.js";
 
-/** Events the HA integration has no handler for: they reach the TV, REST path and light rules, never the Pusher channel. */
-export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "card", "powerplay", "first_down", "third_down"]);
+/**
+ * Events that must not go on the ConnectedRoom Pusher channel.
+ * `card` / `powerplay` are spoken by the patched integration — keep them off this list.
+ */
+export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "first_down", "third_down"]);
 
 interface EventRecord {
   at: number;
