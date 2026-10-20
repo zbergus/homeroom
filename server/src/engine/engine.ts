@@ -11,6 +11,16 @@ import { MEDIA_DIR, type Store } from "../store.js";
 import type { EventPayload, Game, Insight, Rgb, ScoringPlay, Settings, Team, UiEventType } from "../types.js";
 import { DelayBuffer } from "./delay.js";
 import { diffGame, type Detected } from "./diff.js";
+import {
+  buildSimGame,
+  idleSimulationState,
+  SIM_GAME_ID,
+  SIM_MAX_MS,
+  SIM_STEP_MS,
+  SIM_STEPS,
+  type SimulationState,
+  type SimStep,
+} from "./simulation.js";
 import { naturalText, scoringLabel } from "./text.js";
 import { MANUAL_SPECS } from "./triggers.js";
 import { errMsg } from "../security.js";
@@ -35,6 +45,8 @@ const WHITE: Rgb = { r: 255, g: 255, b: 255 };
 interface EngineEvents {
   event: [EventPayload];
   game: [Game];
+  /** viewers should replace their game map (used when simulation stops) */
+  refresh: [];
 }
 
 export class Engine extends EventEmitter<EngineEvents> {
@@ -59,6 +71,10 @@ export class Engine extends EventEmitter<EngineEvents> {
   private shownSaved = new Map<string, { at: number; status: string }>();
   private restoredAt = new Map<string, number>();
   private restoreGraceMs: number;
+  private sim: SimulationState = idleSimulationState();
+  private simTimers: ReturnType<typeof setTimeout>[] = [];
+  private simStepMs: number;
+  private simMaxMs: number;
 
   /** the poller listens here to track provider health (enrichment calls swallow their own errors) */
   providerReport: (id: string, ok: boolean, err?: unknown) => void = () => {};
@@ -71,7 +87,15 @@ export class Engine extends EventEmitter<EngineEvents> {
   constructor(
     readonly store: Store,
     private now: () => number = () => Date.now(),
-    deps: { fetchSummary?: typeof fetchSummary | undefined; fetchMlbGame?: typeof fetchMlbGame | undefined; buildInsight?: (g: Game) => Promise<Insight | undefined>; retryMs?: number | undefined; restoreGraceMs?: number | undefined } = {},
+    deps: {
+      fetchSummary?: typeof fetchSummary | undefined;
+      fetchMlbGame?: typeof fetchMlbGame | undefined;
+      buildInsight?: (g: Game) => Promise<Insight | undefined>;
+      retryMs?: number | undefined;
+      restoreGraceMs?: number | undefined;
+      simStepMs?: number | undefined;
+      simMaxMs?: number | undefined;
+    } = {},
   ) {
     super();
     this.fetchSummary = deps.fetchSummary ?? fetchSummary;
@@ -79,11 +103,15 @@ export class Engine extends EventEmitter<EngineEvents> {
     this.buildInsight = deps.buildInsight ?? ((g) => buildInsight(g));
     this.retryMs = deps.retryMs ?? 1500;
     this.restoreGraceMs = deps.restoreGraceMs ?? 10_000;
+    this.simStepMs = deps.simStepMs ?? SIM_STEP_MS;
+    this.simMaxMs = deps.simMaxMs ?? SIM_MAX_MS;
     this.buffer = new DelayBuffer<Out>((o) => this.release(o), now);
   }
 
   /** Stop timers without touching persisted state (process shutdown; tests simulate a crash with it). */
   stop(): void {
+    this.clearSimTimers();
+    this.sim = idleSimulationState();
     this.buffer.clear();
   }
 
@@ -107,6 +135,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
   /** A game is synced if the user ticked it, or (auto-sync) it contains a favourite team, unless excluded. */
   isSynced(gameId: string): boolean {
+    if (this.sim.active && gameId === SIM_GAME_ID) return true;
     const s = this.settings;
     if (s.sync_excluded.includes(gameId)) return false;
     if ((this.synced ??= new Set(this.store.getSyncedGames())).has(gameId)) return true;
@@ -115,6 +144,54 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!g) return false;
     const favs = this.favoriteSet();
     return favs.has(`${g.league}:${g.home.abbr}`) || favs.has(`${g.league}:${g.away.abbr}`);
+  }
+
+  /** In-app NHL simulation (scripted synthetic game through the real alert path). Never sticky across restarts. */
+  simulationStatus(): SimulationState {
+    return { ...this.sim };
+  }
+
+  startSimulation(): SimulationState {
+    if (this.sim.active) {
+      throw Object.assign(new Error("simulation already active"), { statusCode: 409 });
+    }
+    this.teardownSimulation(false);
+    const fav = this.store.getFavorites().find((f) => f.league === "nhl");
+    const known = [...this.games.values()].find((g) => g.league === "nhl" && (g.home.abbr === fav?.abbr || g.away.abbr === fav?.abbr));
+    const branded = fav
+      ? {
+          abbr: fav.abbr,
+          name: known?.home.abbr === fav.abbr ? known.home.display_name : known?.away.abbr === fav.abbr ? known.away.display_name : undefined,
+        }
+      : undefined;
+    const game = buildSimGame(branded);
+    if (known) {
+      const side = known.home.abbr === game.home.abbr ? known.home : known.away.abbr === game.home.abbr ? known.away : undefined;
+      if (side?.logo) game.home.logo = side.logo;
+      if (side?.options) game.home.options = structuredClone(side.options);
+    }
+    const started = this.now();
+    this.sim = { active: true, game_id: SIM_GAME_ID, started_at: started, ends_at: started + this.simMaxMs, step_index: 0 };
+    this.games.set(game.id, game);
+    this.pushOut({ kind: "game", game }, 0, `sim:${game.id}:snap`);
+    for (let i = 0; i < SIM_STEPS.length; i++) {
+      const step = SIM_STEPS[i]!;
+      const t = this.schedule(() => {
+        if (!this.sim.active) return;
+        this.sim = { ...this.sim, step_index: i };
+        this.runSimStep(step);
+      }, i * this.simStepMs);
+      this.simTimers.push(t);
+    }
+    this.simTimers.push(this.schedule(() => {
+      if (this.sim.active) this.teardownSimulation(true);
+    }, this.simMaxMs));
+    return this.simulationStatus();
+  }
+
+  stopSimulation(): SimulationState {
+    this.teardownSimulation(true);
+    return this.simulationStatus();
   }
   /** resolves by_game ?? by_league ?? global */
   delayMs(gameId: string): number {
@@ -561,6 +638,95 @@ export class Engine extends EventEmitter<EngineEvents> {
     return this.fireTrigger({ trigger: "goal", league: opts.league, team_abbr: opts.team_abbr, apply_delay: opts.bypass_delay === false });
   }
 
+  private schedule(fn: () => void, delayMs: number): ReturnType<typeof setTimeout> {
+    return setTimeout(fn, Math.max(0, delayMs));
+  }
+
+  private clearSimTimers(): void {
+    for (const t of this.simTimers) clearTimeout(t);
+    this.simTimers = [];
+  }
+
+  private teardownSimulation(emitRefresh: boolean): void {
+    this.clearSimTimers();
+    this.buffer.cancel(
+      (o) => (o.kind === "game" ? o.game.id === SIM_GAME_ID : o.payload.game.id === SIM_GAME_ID),
+      "sim:",
+    );
+    for (const r of this.store.listPending()) {
+      if (r.game_id !== SIM_GAME_ID) continue;
+      this.dropPending(r.event_id);
+    }
+    this.games.delete(SIM_GAME_ID);
+    this.shown.delete(SIM_GAME_ID);
+    this.shownSaved.delete(SIM_GAME_ID);
+    try {
+      this.store.deleteShown(SIM_GAME_ID);
+    } catch {
+      /* best effort */
+    }
+    this.sim = idleSimulationState();
+    if (emitRefresh) this.emit("refresh");
+  }
+
+  private runSimStep(step: SimStep): void {
+    const prev = this.games.get(SIM_GAME_ID);
+    if (!prev) return;
+    const game = structuredClone(prev);
+    const league = leagueById("nhl");
+    let payload: EventPayload;
+
+    if (step.type === "game_start") {
+      game.status = "in";
+      game.period = 1;
+      game.period_label = periodLabel(league, 1);
+      game.clock = "20:00";
+      game.intermission = false;
+      payload = this.buildEvent("game_start", game, { test: true });
+    } else if (step.type === "period_start") {
+      game.status = "in";
+      game.period = step.period;
+      game.period_label = periodLabel(league, step.period);
+      game.clock = "20:00";
+      game.intermission = false;
+      payload = this.buildEvent("period_start", game, { period: step.period, test: true });
+    } else if (step.type === "powerplay") {
+      payload = this.buildEvent("powerplay", game, { team: game.home, test: true });
+    } else if (step.type === "goal") {
+      const side = step.side === "home" ? game.home : game.away;
+      side.score += 1;
+      const play: ScoringPlay = {
+        key: `sim-goal-${side.abbr}-${side.score}`,
+        period: game.period,
+        period_label: game.period_label,
+        clock: game.clock,
+        team_abbr: side.abbr,
+        scorer: "Test Player",
+        assists: [],
+        text: "Goal",
+        home_score: game.home.score,
+        away_score: game.away.score,
+      };
+      game.goals = [...game.goals, play];
+      payload = this.buildEvent("goal", game, { team: side, delta: 1, play, test: true });
+    } else if (step.type === "period_end") {
+      game.intermission = true;
+      game.clock = "0:00";
+      payload = this.buildEvent("period_end", game, { period: step.period, test: true });
+    } else {
+      game.status = "post";
+      game.intermission = false;
+      if (game.home.score === game.away.score) game.home.score += 1;
+      payload = this.buildEvent("game_end", game, { test: true });
+    }
+
+    payload.manual = true;
+    payload.trigger = `sim_${step.type}`;
+    this.games.set(game.id, game);
+    this.pushOut({ kind: "game", game }, 0, `sim:${game.id}:snap`);
+    this.pushOut({ kind: "event", payload }, 0, `sim:${game.id}:${step.type}`);
+  }
+
   private syntheticGame(leagueId: string, abbr = "HOME"): Game {
     const league = leagueById(leagueId);
     const mk = (a: string, n: string, c: Rgb): Team => ({
@@ -613,6 +779,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   private persistShown(g: Game): void {
+    if (g.id === SIM_GAME_ID) return; // simulation must never survive a restart
     const t = this.now();
     const last = this.shownSaved.get(g.id);
     // live games release a snapshot every poll: write at most every few seconds, but always on a status change
@@ -640,12 +807,16 @@ export class Engine extends EventEmitter<EngineEvents> {
     let dropped = 0;
     let shown = 0;
     for (const r of this.store.listShown()) {
-      if (now - r.saved_at > SHOWN_MAX_AGE_MS) {
+      if (r.game_id === SIM_GAME_ID || now - r.saved_at > SHOWN_MAX_AGE_MS) {
         this.store.deleteShown(r.game_id);
         continue;
       }
       try {
         const g = JSON.parse(r.json) as Game;
+        if (g.id === SIM_GAME_ID) {
+          this.store.deleteShown(r.game_id);
+          continue;
+        }
         if (this.shown.has(g.id)) continue;
         this.shown.set(g.id, g);
         this.restoredAt.set(g.id, now);
@@ -663,7 +834,12 @@ export class Engine extends EventEmitter<EngineEvents> {
       } catch (err) {
         console.warn(`[engine] unreadable pending event ${r.event_id}: ${errMsg(err)}`);
       }
-      if (!payload || overdue > this.restoreGraceMs) {
+      if (!payload || payload.game?.id === SIM_GAME_ID || r.game_id === SIM_GAME_ID || overdue > this.restoreGraceMs) {
+        if (payload?.game?.id === SIM_GAME_ID || r.game_id === SIM_GAME_ID) {
+          this.dropPending(r.event_id);
+          dropped++;
+          continue;
+        }
         console.warn(`[engine] dropping stale pending event ${r.event_id} (${payload?.type ?? "?"} ${r.game_id}), ${Math.round(overdue / 1000)}s overdue after restart`);
         this.dropPending(r.event_id);
         dropped++;

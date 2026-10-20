@@ -45,6 +45,17 @@ export class DelayBuffer<T> {
     this.timer = null;
   }
 
+  /** Drop queued items matching `pred` and forget watermarks whose key starts with `keyPrefix`. */
+  cancel(pred: (item: T) => boolean, keyPrefix = ""): number {
+    const before = this.queue.length;
+    this.queue = this.queue.filter((e) => !pred(e.item));
+    if (keyPrefix) {
+      for (const k of [...this.lastAt.keys()]) if (k.startsWith(keyPrefix)) this.lastAt.delete(k);
+    }
+    if (this.queue.length !== before) this.arm();
+    return before - this.queue.length;
+  }
+
   private arm(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;

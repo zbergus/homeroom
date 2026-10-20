@@ -25,8 +25,9 @@ export const HEALTH_CLS: Record<Health, string> = { ok: "bg-emerald-400", warn: 
 
 const CHECKLIST = `Post-deploy checklist
 1. Home Assistant > Settings > Devices > Homeroom: the integration link shows "events connected" in Status & diagnostics.
-2. Alerts > Test Goal Alert (or POST /api/trigger {"trigger":"goal"}): a light flashes and the goal horn plays on your configured media player.
-3. Run scripts/e2e_pysher.py against this server: it must pass (goal -> goal_horn, get_state -> execute -> restore).`;
+2. Alerts > Test Goal Alert: lights flash, goal horn plays, then TTS (spoken line uses scorer name "Test Player").
+3. Alerts > Test TTS: speaks only (period start), no horn — confirm the toast "Will say" line matches the HomePod.
+4. Run scripts/e2e_pysher.py against this server: it must pass (goal -> goal_horn, get_state -> execute -> restore).`;
 
 function Badge({ ok, children }: { ok: boolean | null; children: React.ReactNode }) {
   const c = ok === null ? "bg-slate-500/20 text-slate-300" : ok ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300";

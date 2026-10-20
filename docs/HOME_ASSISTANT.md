@@ -17,6 +17,7 @@ python3 ha/patch_integration.py --src ../connected-room-hass --host <LAN IP of t
 - `--key` must equal the server's `PUSHER_APP_KEY` (default `homeroom-local-key`).
 - Copy the folder into `<HA config>/custom_components/connectedroom` (or add it as a HACS custom repository), restart HA, add **ConnectedRoom**, and enter **any** API key (it only identifies the install).
 - In the integration's options pick the lights/switches to expose (they appear under *Devices & light actions* in Homeroom), the TTS player(s) or TTS entity, and the **goal-horn media player(s)**.
+- Homeroom's patched `connectedroom.py` also binds **`card`** (yellow/red) and **`powerplay`** for TTS (no horn). After regenerating or editing the integration, **copy it into HA again and restart Home Assistant** or those events will stay silent.
 
 ## 2. Make the horn work
 - `PUBLIC_BASE_URL` must be an address **HA and the speaker** can reach (`http://<LAN IP>:8080`), never `localhost`. Cast speakers fetch the MP3 themselves.

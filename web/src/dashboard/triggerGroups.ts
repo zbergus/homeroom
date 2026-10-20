@@ -1,20 +1,23 @@
 import type { Trigger } from "../types";
 
 const GROUPS = [
-  { key: "hockey", label: "Hockey / soccer" },
+  { key: "hockey", label: "Hockey" },
+  { key: "soccer", label: "Soccer" },
   { key: "football", label: "Football" },
   { key: "basketball", label: "Basketball" },
   { key: "baseball", label: "Baseball" },
   { key: "general", label: "General" },
 ] as const;
 
-const keyOf = (t: Trigger): string => {
-  const s = t.sports?.[0];
-  if (!s) return "general";
-  return s === "soccer" ? "hockey" : s;
-};
-
-/** Triggers grouped by sport in a stable order; empty groups are dropped. */
+/** Triggers grouped by sport in a stable order; empty groups are dropped.
+ *  Multi-sport triggers (e.g. Goal) appear in every listed sport group. */
 export function groupTriggers(list: Trigger[]) {
-  return GROUPS.map((g) => ({ ...g, items: list.filter((t) => keyOf(t) === g.key) })).filter((g) => g.items.length > 0);
+  return GROUPS.map((g) => ({
+    ...g,
+    items: list.filter((t) => {
+      const sports = t.sports;
+      if (!sports?.length) return g.key === "general";
+      return sports.includes(g.key);
+    }),
+  })).filter((g) => g.items.length > 0);
 }

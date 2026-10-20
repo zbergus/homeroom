@@ -272,6 +272,8 @@ export interface Status {
   providers?: ProviderStatus[] | undefined;
   /** server clock when this response was built, so ages do not depend on the browser's clock */
   server_time?: number | undefined;
+  /** in-app NHL simulation (scripted fake game); fail-safe off on process start */
+  simulation?: { active: boolean; game_id?: string | undefined; started_at?: number | undefined; ends_at?: number | undefined; step_index?: number | undefined } | undefined;
 }
 
 export interface ProviderStatus {

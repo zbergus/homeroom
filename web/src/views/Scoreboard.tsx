@@ -6,7 +6,7 @@ import { useKiosk, useNow, useOrientation, useQueryParam, useTicker } from "../l
 import { countdown, shortPeriod, startMs, whenLabel } from "../lib/format";
 import { resolveMatchup, type SideColors } from "../lib/colors";
 import { useGameClock } from "../lib/clock";
-import { ConnDot, TeamBadge } from "../components/Kiosk";
+import { ConnDot, SimBadge, TeamBadge } from "../components/Kiosk";
 import { GameBars } from "../components/GameBars";
 import { SidePanel } from "../components/SidePanel";
 import { rowsFor } from "../components/StatBars";
@@ -209,6 +209,7 @@ export default function Scoreboard() {
       {body}
       <OverturnedToast event={overturned} />
       <GoalOverlay event={goal.current} pending={goal.pending} />
+      <SimBadge active={all.some((g) => g.id === "nhl:sim")} />
       <ConnDot conn={conn} />
     </div>
   );

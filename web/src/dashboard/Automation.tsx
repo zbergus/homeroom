@@ -12,9 +12,11 @@ export default function Automation({ settings, saveNow }: { settings: Settings; 
     try { await saveNow(p); } catch (e) { setErr(`Could not save: ${errMsg(e)}. The switch was put back.`); } finally { setBusy(false); }
   };
   return (
-    <Card title="Automation" subtitle="Which goals are allowed to drive lights, horns and Home Assistant.">
+    <Card title="Automation" subtitle="Lights, horns and Home Assistant. Only Goal plays a horn; other events can still speak TTS.">
       {err && <div className="mb-3"><Notice kind="err">{err}</Notice></div>}
       <ul className="flex flex-col gap-2">
+        <SwitchRow label="Speak announcements (TTS)" checked={settings.tts_enabled !== false} disabled={busy} onChange={(v) => void set({ tts_enabled: v })}
+          help="When off, Homeroom clears the spoken line before pushing to Home Assistant (horns and lights still fire)." />
         <SwitchRow label="My team only" checked={!!settings.my_team_only} disabled={busy} onChange={(v) => void set({ my_team_only: v })}
           help="Automation outputs fire only for goals by your favourite teams. The TV overlay still shows every goal." />
         <SwitchRow label="Disable automations" checked={settings.automations_enabled === false} disabled={busy} onChange={(v) => void set({ automations_enabled: !v })}

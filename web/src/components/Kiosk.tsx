@@ -42,3 +42,17 @@ export function ConnDot({ conn }: { conn: ConnState }) {
     />
   );
 }
+
+/** Amber strip while the in-app NHL simulation game is on the wire. */
+export function SimBadge({ active }: { active: boolean }) {
+  if (!active) return null;
+  return (
+    <span
+      role="status"
+      className="fixed left-1/2 top-[0.8vmin] z-50 -translate-x-1/2 rounded bg-amber-500/90 px-[1.2vmin] py-[0.35vmin] font-bold uppercase tracking-wide text-black"
+      style={{ fontSize: "1.35vmin" }}
+    >
+      Simulation — not live
+    </span>
+  );
+}
