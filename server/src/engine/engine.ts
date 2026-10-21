@@ -210,6 +210,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (prev) {
       next = {
         ...incoming,
+        clock_at_ms: this.now(),
         nhl_id: prev.nhl_id,
         mlb_id: prev.mlb_id,
         // soccer's scoreboard already lists goals with scorers; for other sports they come from enrichment
@@ -241,7 +242,6 @@ export class Engine extends EventEmitter<EngineEvents> {
         };
       }
     }
-    if (next.authority === "espn") next.clock_at_ms = this.now();
     this.commit(prev, next);
   }
 

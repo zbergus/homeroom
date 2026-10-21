@@ -186,4 +186,36 @@ describe("Engine", () => {
       vi.useRealTimers();
     }
   });
+
+  it("stamps fresh ESPN observations before preserving an authoritative clock", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const engine = new Engine(new Store(":memory:"));
+    try {
+      const incoming = mk({ clock_s: 600, clock_running: false, clock_dir: "down", clock_at_ms: 0 });
+      engine.ingestEspn(incoming);
+      expect(engine.games.get(incoming.id)?.clock_at_ms).toBe(1000);
+      vi.advanceTimersByTime(1000);
+      engine.ingestEspn(incoming);
+      expect(engine.games.get(incoming.id)?.clock_at_ms).toBe(2000);
+      expect(incoming.clock_at_ms).toBe(0);
+      engine.ingestNhl(incoming.id, {
+        id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+        state: "in", period: 1, clock: "09:00", clockS: 540, clockRunning: false, inIntermission: false,
+        homeScore: 1, awayScore: 0, goals: [],
+      });
+      vi.advanceTimersByTime(1000);
+      engine.ingestEspn(incoming);
+      expect(engine.games.get(incoming.id)?.clock_at_ms).toBe(2000);
+      expect(engine.games.get(incoming.id)?.clock_s).toBe(540);
+      expect(engine.games.get(incoming.id)?.home.score).toBe(1);
+      vi.advanceTimersByTime(10000);
+      engine.ingestEspn(incoming);
+      expect(engine.games.get(incoming.id)?.clock_at_ms).toBe(13000);
+      expect(engine.games.get(incoming.id)?.clock_s).toBe(600);
+    } finally {
+      engine.stop();
+      vi.useRealTimers();
+    }
+  });
 });
