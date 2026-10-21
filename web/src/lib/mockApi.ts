@@ -1,4 +1,4 @@
-import type { Device, Horn, League, LightAction, Settings, SyncState } from "../types";
+import type { CelebrationVideo, Device, Horn, League, LightAction, Settings, SyncState } from "../types";
 import { MOCK_SETTINGS, mockSchedule } from "./mock";
 
 // --- mock-mode in-memory backend so the dashboard is usable without a server ---
@@ -6,6 +6,7 @@ const mem = {
   settings: structuredClone(MOCK_SETTINGS) as Settings,
   sync: { games: ["nhl:m1"], favorites: [{ league: "nhl", abbr: "MIN" }] } as SyncState,
   horns: [{ league: "nhl", abbr: "default", url: "" }, { league: "nhl", abbr: "MIN", url: "" }] as Horn[],
+  celebrations: [] as CelebrationVideo[],
   actions: [
     { id: "a1", enabled: true, triggers: ["goal"], team_scope: "favorites", entities: ["light.living_room"], effect: "alternate", duration: 8, speed: 5, colors: "team", restore: true },
   ] as LightAction[],
@@ -38,6 +39,7 @@ function mock<T>(method: string, path: string, body?: unknown): T {
   if (p === "/api/simulation/start") return { active: true, game_id: "nhl:sim", ends_at: Date.now() + 600_000 } as T;
   if (p === "/api/simulation/stop") return { active: false } as T;
   if (p === "/api/horns") return mem.horns as T;
+  if (p === "/api/celebrations") return mem.celebrations as T;
   if (p === "/api/ha/test") return { ok: true, message: "mock: ok" } as T;
   return {} as T;
 }
@@ -55,4 +57,17 @@ export function mockUploadHorn(league: string, abbr: string, file: File): void {
 
 export function mockDeleteHorn(league: string, abbr: string): void {
   mem.horns = mem.horns.filter((h) => !(h.league === league && h.abbr === abbr));
+}
+
+export function mockUploadCelebration(league: string, abbr: string, playerId: string, file: File): void {
+  mockDeleteCelebration({ league, abbr, player_id: playerId, url: "" });
+  mem.celebrations.push({ league, abbr, player_id: playerId, url: URL.createObjectURL(file) });
+}
+
+export function mockDeleteCelebration(v: CelebrationVideo): void {
+  mem.celebrations = mem.celebrations.filter((c) => {
+    if (c.league !== v.league || c.abbr !== v.abbr || c.player_id !== v.player_id) return true;
+    URL.revokeObjectURL(c.url);
+    return false;
+  });
 }

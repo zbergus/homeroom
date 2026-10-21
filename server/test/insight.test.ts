@@ -112,7 +112,7 @@ describe("parseSummary on real payloads", () => {
     const ids = Object.fromEntries(s.header.competitions[0].competitors.map((c: Raw) => [c.id, c.team.abbreviation]));
     const { plays, rows } = parseSummary(leagueById("nhl"), s, ids);
     expect(plays.length).toBe(3);
-    expect(plays[0]).toMatchObject({ scorer: "Danila Yurov", period: 1 });
+    expect(plays[0]).toMatchObject({ scorer: "Danila Yurov", scorer_id: "espn:5080172", period: 1 });
     expect(plays[0].assists).toEqual(["Yakov Trenin"]);
     expect(plays.every((p) => !p.strength || ["ev", "pp", "sh", "en"].includes(p.strength))).toBe(true);
     expect(plays[0].team_abbr).toBe("MIN");

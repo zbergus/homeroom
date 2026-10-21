@@ -6,6 +6,7 @@ import { useOnlyMine } from "../lib/mine";
 import { sortGames, statusText, startMs, timeLabel, countdown } from "../lib/format";
 import { ConnDot } from "../components/Kiosk";
 import { GameBars } from "../components/GameBars";
+import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 
 const SPEED = 170; // px per second
 
@@ -61,6 +62,12 @@ export default function Ticker() {
   }, []));
 
   const mine = useOnlyMine(useQueryParam("only"));
+  const goal = useGoalQueue((e) => {
+    if (mine === undefined) return true;
+    if (mine === null) return false;
+    const g = games.get(e.game.id);
+    return !!g && mine(g);
+  });
   const list = (sortGames([...games.values()]) as Game[]).filter((g) => mine === undefined || (mine !== null && mine(g)));
   return (
     <div className="kiosk fixed inset-0 flex items-center bg-black">
@@ -73,6 +80,7 @@ export default function Ticker() {
         )}
         <div className="led-dots pointer-events-none absolute inset-0" />
       </div>
+      <GoalOverlay event={goal.current} pending={goal.pending} />
       <ConnDot conn={conn} />
     </div>
   );

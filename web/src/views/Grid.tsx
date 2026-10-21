@@ -5,6 +5,7 @@ import { useKiosk, useNow, useOrientation, useQueryParam } from "../lib/hooks";
 import { useOnlyMine } from "../lib/mine";
 import { countdown, diagonal, statusText, sortGames, startMs, timeLabel } from "../lib/format";
 import { ConnDot, TeamBadge } from "../components/Kiosk";
+import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 
 const columnsFor = (n: number, o: "portrait" | "landscape") => {
   if (o === "portrait") return n <= 1 ? 1 : 2;
@@ -73,6 +74,12 @@ export default function Grid() {
   const perPage = Math.min(12, Math.max(1, Number(params.get("max")) || 8));
   const rotateMs = Math.max(4, Number(params.get("rotate")) || 12) * 1000;
   const mine = useOnlyMine(useQueryParam("only")); // undefined: no filter; null: filter wanted but favourites not loaded yet
+  const goal = useGoalQueue((e) => {
+    if (mine === undefined) return true;
+    if (mine === null) return false;
+    const g = games.get(e.game.id);
+    return !!g && mine(g);
+  });
   const sorted = (sortGames([...games.values()]) as Game[]).filter((g) => mine === undefined || (mine !== null && mine(g)));
   const liveCount = sorted.filter((g) => g.status === "in").length;
   // Few live games: show them plus the next-up games on one page, no paging.
@@ -105,6 +112,7 @@ export default function Grid() {
           ))}
         </div>
       )}
+      <GoalOverlay event={goal.current} pending={goal.pending} />
       <ConnDot conn={conn} />
     </div>
   );

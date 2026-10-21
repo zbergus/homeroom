@@ -34,6 +34,8 @@ export interface ScoringPlay {
   team_abbr?: string | undefined;
   team_id?: string | undefined;
   scorer?: string | undefined;
+  scorer_id?: string | undefined;
+  scorer_number?: string | undefined;
   assists?: string[] | undefined;
   strength?: "ev" | "pp" | "sh" | "en" | string | undefined; // server normalises to ev | pp | sh | en
   tags?: string[] | undefined;
@@ -158,6 +160,8 @@ type UiEventType = EventType | "goal_overturned" | "card" | "powerplay" | "first
 export interface Scoring {
   label: string;
   scorer?: string | undefined;
+  scorer_id?: string | undefined;
+  scorer_number?: string | undefined;
   assists?: string[] | undefined;
   strength?: string | undefined;
   delta: number;
@@ -199,6 +203,13 @@ export interface SyncState {
 }
 
 export interface TeamInfo { abbr: string; name: string; logo?: string | undefined; options?: TeamOptions | undefined }
+
+export interface CelebrationVideo {
+  league: string;
+  abbr: string;
+  player_id: string;
+  url: string;
+}
 
 export interface HASettings {
   url: string;

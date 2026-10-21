@@ -6,6 +6,14 @@ import type { PusherHub } from "./pusher.js";
 
 const rgb = (c: Rgb) => [c.r, c.g, c.b];
 
+/** Celebration metadata is UI-only; keep both scoring and nested game goals off the integration wire. */
+function integrationScorer<T extends { scorer_id?: string | undefined; scorer_number?: string | undefined }>(value: T): T {
+  const copy = { ...value };
+  delete copy.scorer_id;
+  delete copy.scorer_number;
+  return copy;
+}
+
 /** Flat body for the direct-REST path (`connectedroom_<type>` events on the HA bus). */
 function flatBody(ev: EventPayload, ttsEnabled: boolean): Record<string, unknown> {
   const o = (ev.team ?? ev.game.home).options;
@@ -50,7 +58,12 @@ export class HaOutputs {
   /** Drop-in path: publish to every linked integration exactly as the cloud did. */
   publishPusher(ev: EventPayload): number {
     const tts = this.engine.settings.tts_enabled;
-    const data = { ...ev, natural_text: tts ? ev.natural_text : null };
+    const data = {
+      ...ev,
+      ...(ev.scoring ? { scoring: integrationScorer(ev.scoring) } : {}),
+      game: { ...ev.game, goals: ev.game.goals.map(integrationScorer) },
+      natural_text: tts ? ev.natural_text : null,
+    };
     let clients = 0;
     // optional: set the horn volume first (bounded to ~2 s: the horn must follow `goal` within ~3 s). No-op unless configured.
     const hornReady = ev.type === "goal" && ev.goal_horn ? this.hornVolume.prepare(ev.event_id) : undefined;

@@ -20,7 +20,7 @@ cp .env.example .env        # set PUBLIC_BASE_URL=http://<this machine's LAN IP>
 docker compose up -d --build
 open http://localhost:8080
 ```
-Data lives in `./data` (SQLite) and `./media` (goal horns). Both are bind mounts, so they survive rebuilds.
+Data lives in `./data` (SQLite) and `./media` (goal horns and celebration videos). Both are bind mounts, so they survive rebuilds.
 
 **Deploying to a home server (Arcane):** CI publishes `ghcr.io/zbergus/homeroom`; paste [`deploy/docker-compose.yml`](deploy/docker-compose.yml) into an Arcane project. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
@@ -48,6 +48,15 @@ Nothing has been tested inside a real Home Assistant yet; use the post-deploy ch
 * **Leagues** – NHL, NFL, NBA, MLB, MLS, Premier League, LaLiga, Bundesliga and Champions League are on by default; WNBA, NCAA football and NCAA hockey are opt-in (Setup → Leagues). Disabled leagues are not polled.
 * **TV views** – `/scoreboard?game=auto|<id>` (live hero with stats and form, pre-game *players to watch* / *recent form*, intermission *stats* / *summary*), `/grid?max=8&rotate=12`, `/ticker`. `/scoreboard?game=auto` follows only your synced games and favourite teams and, when none is on, counts down to the next one of yours (looked up in the 7-day schedule); add `?only=mine` to `/grid` or `/ticker` to show only your teams' and synced games, updating as you add or remove favourites. Open in any browser, Fully Kiosk or a Chromecast tab. Add `?mock=1` to preview without a backend.
 * **Horns** – upload MP3s per team (or a league default) in the UI, or drop files in `media/horns/<league>/<ABBR>.mp3`. `scripts/fetch-horns.mjs` bulk-imports from a manifest of URLs/local paths. Long horns are trimmed on playback (default 30 s, because the spoken announcement waits for the horn to finish), with a fade-out and optional loudness levelling in the Docker image (ffmpeg); a plain `npm run dev` without ffmpeg cuts without a fade. "Play horn for": home team / my teams / both. See [`docs/HORNS.md`](docs/HORNS.md).
+* **Celebration videos** – Setup → *Celebration videos*: upload a local MP4 (up to 50 MiB), choose a league/team, and optionally assign a player ID. Every TV view (Scoreboard, Plate, SportsGrid, Ticker) uses **player video → team video → built-in GOAL wall** (tiled label in team colours, logo, scorer and updated score). Clips play muted for up to the existing six-second goal overlay, after the stream delay; horns, lights and TTS are unchanged. Short or unplayable clips return to the wall; a failed player video first tries the team video. Reduced-motion viewers see the wall instead of video. Use H.264 MP4 for broad browser compatibility; no transcoding is performed.
+
+### Assigning celebration videos
+
+Leave the player field blank for the team's generic fallback. For a player clip, choose a known scorer from the suggestions or enter `nhl:`, `espn:`, or `mlb:` plus the numeric player ID (**not** jersey number). Suggestions use already-received game data; they are not a full roster search. NHL fast feed, ESPN summaries/soccer details, and MLB Stats API attach those ids when present. If the feed hasn't identified the scorer, the team fallback plays.
+
+Upload to the same assignment to replace a clip; use **Preview** to check playback, or **Delete** to restore the next fallback. Kiosk libraries refresh every 30 seconds and when a goal arrives. Videos remain in the existing media volume under `media/celebrations/`; deleting one never affects horns. Companion screens run Homeroom TV views in a browser; this does not replace or control the game broadcast on your main TV, nor push video to HA media players.
+
+No videos ship with Homeroom and there is no automatic downloader. Supply original or appropriately licensed clips; a clip being publicly viewable does not establish permission to reuse it. Files are local, but browser displays need network access to Homeroom as usual.
 
 ## Polling behaviour
 

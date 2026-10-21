@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { Engine } from "../src/engine/engine.js";
 import { Store } from "../src/store.js";
+import { HaOutputs } from "../src/outputs/ha.js";
+import { PusherHub } from "../src/outputs/pusher.js";
 import type { NhlGame } from "../src/providers/nhl.js";
 import type { EventPayload, Game, ScoringPlay, Team } from "../src/types.js";
 
@@ -33,6 +35,35 @@ function setup(plays: ScoringPlay[] = []) {
 }
 
 describe("Engine", () => {
+  it("copies celebration metadata into delayed events without changing the Pusher payload mapping", () => {
+    const { engine, store } = setup();
+    const goal = { ...play(1, "MIN", "Player"), scorer_id: "nhl:12345", scorer_number: "22" };
+    const game = mk({ goals: [goal] });
+    const event = engine.buildEvent("goal", game, { team: game.home, play: goal, delta: 1 });
+    expect(event.scoring).toMatchObject({ scorer_id: "nhl:12345", scorer_number: "22" });
+    const hub = new PusherHub(store, "test", "test");
+    const broadcast = vi.spyOn(hub, "broadcast").mockReturnValue(0);
+    const ha = new HaOutputs(engine, hub);
+    store.link("test-integration");
+    ha.publishPusher(event);
+    const enriched = broadcast.mock.calls[0]?.[2];
+    const plainGoal: ScoringPlay = { ...goal };
+    delete plainGoal.scorer_id;
+    delete plainGoal.scorer_number;
+    const plainGame = { ...game, goals: [plainGoal] };
+    const plainEvent = { ...event, game: plainGame, scoring: { ...event.scoring! } };
+    delete plainEvent.scoring.scorer_id;
+    delete plainEvent.scoring.scorer_number;
+    broadcast.mockClear();
+    ha.publishPusher(plainEvent);
+    expect(enriched).toEqual(broadcast.mock.calls[0]?.[2]);
+    expect(JSON.stringify(enriched)).not.toMatch(/scorer_id|scorer_number/);
+    expect(event.scoring?.scorer_id).toBe("nhl:12345");
+    expect(goal.scorer_number).toBe("22");
+    hub.close();
+    engine.stop();
+  });
+
   it("full game: start, goal w/ scorer, intermission, resume, end; nothing on first sight", async () => {
     const { engine, events, settle } = setup([play(1, "MIN", "Danila Yurov")]);
     engine.ingestEspn(mk({ status: "pre", period: 0 }));

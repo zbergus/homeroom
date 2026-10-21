@@ -467,6 +467,8 @@ export class Engine extends EventEmitter<EngineEvents> {
       payload.scoring = {
         label,
         scorer: o.play?.scorer,
+        scorer_id: o.play?.scorer_id,
+        scorer_number: o.play?.scorer_number,
         assists: o.play?.assists ?? [],
         strength: o.play?.strength,
         delta,
@@ -555,7 +557,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     if (!g) return;
     const goals = g.authority === "mlb" && g.goals.length ? g.goals : s.plays.length >= g.goals.length ? s.plays : g.goals;
     const stat_rows = s.rows.length ? s.rows : g.stat_rows;
-    const sameGoals = goals.length === g.goals.length && goals.every((p, i) => p.key === g.goals[i]?.key && p.scorer === g.goals[i]?.scorer);
+    const sameGoals = goals.length === g.goals.length && goals.every((p, i) => p.key === g.goals[i]?.key && p.scorer === g.goals[i]?.scorer && p.scorer_id === g.goals[i]?.scorer_id && p.scorer_number === g.goals[i]?.scorer_number);
     const sameRows = JSON.stringify(stat_rows) === JSON.stringify(g.stat_rows);
     if (sameGoals && sameRows) return; // nothing new: do not push an identical snapshot to every screen
     this.setGame({ ...g, goals, stat_rows });

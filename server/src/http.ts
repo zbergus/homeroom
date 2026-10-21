@@ -15,6 +15,7 @@ import type { HaOutputs } from "./outputs/ha.js";
 import { supportsColor, type LightRules } from "./outputs/lights.js";
 import type { PusherHub } from "./outputs/pusher.js";
 import { HornService, hornWarnings } from "./audio/horns.js";
+import { celebrationRoutes } from "./video/celebrations.js";
 import {
   ABBR_RE, ActionListSchema, CalibrateBodySchema, DevicesSyncSchema, ExecuteBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
   TriggerBodySchema, WsAuthBodySchema,
@@ -122,7 +123,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     // the API speaks JSON (horn uploads are multipart); urlencoded and text bodies are only for the integration routes
     if (api && !isRead(req.method) && req.method !== "OPTIONS") {
       const ct = (req.headers["content-type"] ?? "").toLowerCase();
-      const upload = req.method === "POST" && req.url.startsWith("/api/horns/") && ct.startsWith("multipart/form-data");
+      const upload = req.method === "POST" && /^\/api\/(?:horns\/[^/?]+\/[^/?]+|celebrations\/[^/?]+\/[^/?]+\/[^/?]+)(?:\?|$)/.test(req.url) && ct.startsWith("multipart/form-data");
       if (ct && !upload && !ct.startsWith("application/json")) return reply.code(415).send({ error: "content-type must be application/json" });
     }
     if (!admin || !api || isRead(req.method)) return;
@@ -463,6 +464,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   });
 
   // ================= static: horns + web build =================
+  await app.register(celebrationRoutes, { mediaDir: MEDIA_DIR });
   warmHorns();
   fs.mkdirSync(path.join(MEDIA_DIR, "horns"), { recursive: true });
   // horns go through the processing layer (trim/fade/normalise, cached); everything else under /media is plain static

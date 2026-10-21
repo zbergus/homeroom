@@ -1,4 +1,4 @@
-import type { Calibration, Device, EventRecord, Game, GameLite, Horn, League, LightAction, Settings, SettingsPatch, Status, SyncState, TeamInfo, Trigger } from "../types";
+import type { Calibration, CelebrationVideo, Device, EventRecord, Game, GameLite, Horn, League, LightAction, Settings, SettingsPatch, Status, SyncState, TeamInfo, Trigger } from "../types";
 import { isMockUrl } from "./live";
 
 const TOKEN_KEY = "homeroom.admin_token";
@@ -71,6 +71,18 @@ export const api = {
     if (isMockUrl()) return (await import("./mockApi")).mockDeleteHorn(league, abbr);
     await req("DELETE", `/api/horns/${encodeURIComponent(league)}/${encodeURIComponent(abbr)}`);
   },
+  celebrations: async () => arr<CelebrationVideo>(await call("GET", "/api/celebrations"), "celebrations"),
+  uploadCelebration: async (league: string, abbr: string, playerId: string, file: File) => {
+    if (isMockUrl()) return (await import("./mockApi")).mockUploadCelebration(league, abbr, playerId, file);
+    const f = new FormData(); f.append("file", file);
+    await req("POST", celebrationPath(league, abbr, playerId), undefined, f);
+  },
+  deleteCelebration: async (v: CelebrationVideo) => {
+    if (isMockUrl()) return (await import("./mockApi")).mockDeleteCelebration(v);
+    await req("DELETE", celebrationPath(v.league, v.abbr, v.player_id));
+  },
 };
 
 export const hornUrl = (h: Horn) => h.url || `/media/horns/${h.league}/${h.abbr}.mp3`;
+const celebrationPath = (league: string, abbr: string, playerId: string) =>
+  `/api/celebrations/${[league, abbr, playerId].map(encodeURIComponent).join("/")}`;

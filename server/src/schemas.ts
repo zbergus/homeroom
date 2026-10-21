@@ -12,6 +12,16 @@ const ENTITY_RE = /^[a-z0-9_]+\.[A-Za-z0-9_]+$/;
 
 const leagueId = z.string().refine((id) => LEAGUES.some((l) => l.id === id), "unknown league id");
 const abbr = z.string().regex(ABBR_RE, "must be 1-8 letters or digits");
+export const CelebrationParamsSchema = z.object({
+  league: leagueId,
+  abbr: abbr.transform((s) => s.toUpperCase()),
+  player_id: z.string().max(100).regex(/^(default|(?:nhl|espn|mlb):[0-9]+)$/),
+});
+export const CelebrationMediaParamsSchema = z.object({
+  league: z.string(),
+  abbr: z.string(),
+  file: z.string().endsWith(".mp4").transform((s) => s.slice(0, -4)),
+}).transform((p) => ({ league: p.league, abbr: p.abbr, player_id: p.file })).pipe(CelebrationParamsSchema);
 const delay = z.number().refine(validDelay, "must be 0..120 in 0.5 steps");
 const channel = z.number().int().min(0).max(255);
 

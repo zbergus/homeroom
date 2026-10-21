@@ -6,6 +6,7 @@ import { useDebouncedCallback } from "../lib/hooks";
 import { Notice, inputCls } from "../components/ui";
 import Automation from "../dashboard/Automation";
 import Calendar from "../dashboard/Calendar";
+import CelebrationManager from "../dashboard/CelebrationManager";
 import DelayPanel from "../dashboard/DelayPanel";
 import DevicesActions from "../dashboard/DevicesActions";
 import HASettings from "../dashboard/HASettings";
@@ -149,6 +150,7 @@ export default function Dashboard() {
           <StatusPanel status={status} active={tab === "setup"} />
           {settings && <HASettings settings={settings} saveNow={saveNow} />}
           <HornManager leagues={leagueIds.length ? leagueIds : enabledLeagueIds} settings={settings} />
+          <CelebrationManager leagues={leagueIds.length ? leagueIds : enabledLeagueIds} games={liveGames} />
           {settings && <HornLimits settings={settings} saveNow={saveNow} audio={status.data?.audio} />}
           {settings && <HornVolume settings={settings} saveNow={saveNow} />}
           {settings && <Leagues leagues={leagues} settings={settings} saveNow={saveNow} />}

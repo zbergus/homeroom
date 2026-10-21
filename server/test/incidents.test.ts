@@ -21,7 +21,7 @@ describe("soccer details -> goals and bookings (real EPL payloads)", () => {
     expect(g.home.abbr).toBe("BOU");
     expect(g.goals.map((x) => [x.clock, x.team_abbr, x.scorer])).toEqual([["6'", "BOU", "Marcus Tavernier"], ["48'", "BOU", "Evanilson"]]);
     expect(g.goals.map((x) => [x.home_score, x.away_score])).toEqual([[1, 0], [2, 0]]);
-    expect(g.goals[0].text).toBe("Goal - Header");
+    expect(g.goals[0]).toMatchObject({ text: "Goal - Header", scorer_id: "espn:243364", scorer_number: "16" });
     expect(g.goals.map((x) => x.period)).toEqual([1, 2]);
     expect(g.incidents!.filter((i) => i.kind === "red")).toEqual([expect.objectContaining({ player: "Kevin Danso", clock: "17'" })]);
     expect(g.incidents!.filter((i) => i.kind === "yellow")).toHaveLength(5);

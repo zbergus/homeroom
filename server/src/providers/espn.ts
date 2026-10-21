@@ -1,7 +1,7 @@
 import { isShootout, leagueById, periodLabel, type LeagueDef } from "../leagues.js";
 import type { Game, GameStatus, Incident, LeaderRef, Rgb, ScoringPlay, StatRow, Team } from "../types.js";
 import { buildStatRows } from "./boxscore.js";
-import { finite, getJson, optStr, type Raw, str } from "./raw.js";
+import { digits, finite, getJson, namespacedId, optStr, type Raw, str } from "./raw.js";
 import { normStrength } from "./strength.js";
 
 const BASE = process.env.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
@@ -81,7 +81,8 @@ function parseSoccerDetails(details: Raw[] | undefined, homeId: string, awayId: 
     const abbr = teamId === homeId ? homeAbbr : teamId === awayId ? awayAbbr : "";
     if (!abbr) continue;
     const clock = String(d.clock?.displayValue ?? "");
-    const player = optStr(d.athletesInvolved?.[0]?.displayName);
+    const athlete = d.athletesInvolved?.[0];
+    const player = optStr(athlete?.displayName);
     const key = `${clock}|${teamId}|${d.type?.text ?? ""}|${player ?? ""}`;
     if (d.scoringPlay) {
       if (abbr === homeAbbr) home += Number(d.scoreValue ?? 1) || 1;
@@ -93,6 +94,8 @@ function parseSoccerDetails(details: Raw[] | undefined, homeId: string, awayId: 
         clock,
         team_abbr: abbr,
         scorer: player,
+        scorer_id: namespacedId("espn", athlete?.id),
+        scorer_number: digits(athlete?.jersey),
         assists: [],
         text: optStr(d.type?.text),
         home_score: home,
@@ -221,7 +224,8 @@ export function parseSummary(league: LeagueDef, data: Raw, homeAbbrByTeamId: Rec
   const raw: Raw[] = data.scoringPlays?.length ? data.scoringPlays : (data.plays ?? []).filter((p: Raw) => p.scoringPlay);
   const plays = raw.map((p: Raw): ScoringPlay => {
     const parts: Raw[] = p.participants ?? [];
-    const scorer = optStr(parts.find((x) => x.type === "scorer")?.athlete?.displayName);
+    const scorerAthlete = parts.find((x) => x.type === "scorer")?.athlete;
+    const scorer = optStr(scorerAthlete?.displayName);
     const assists = parts.filter((x) => x.type === "assister" || x.type === "assist").flatMap((x) => optStr(x.athlete?.displayName) ?? []);
     const teamId = String(p.team?.id ?? "");
     return {
@@ -231,6 +235,8 @@ export function parseSummary(league: LeagueDef, data: Raw, homeAbbrByTeamId: Rec
       clock: isShootout(league, Number(p.period?.number ?? 0)) ? "" : String(p.clock?.displayValue ?? ""),
       team_abbr: homeAbbrByTeamId[teamId] ?? "",
       scorer,
+      scorer_id: namespacedId("espn", scorerAthlete?.id),
+      scorer_number: digits(scorerAthlete?.jersey),
       assists,
       strength: normStrength(p.strength?.abbreviation ?? p.strength?.text, /empty net/i.test(p.text ?? "")),
       text: optStr(p.text),
