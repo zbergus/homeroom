@@ -252,15 +252,24 @@ describe("control plane", () => {
     expect(((await link.json()) as { success: boolean }).success).toBe(true);
   });
 
-  it("POST /api/calibrate turns a TV clock reading into a suggested delay", async () => {
+  it("POST /api/calibrate requires a unique timestamped historical clock match", async () => {
     const game = gameOf({ status: "in", period: 2, period_label: "2nd period", clock: "12:34", clock_s: 754, clock_dir: "down" });
-    app.engine.ingestEspn(game);
-    app.engine.ingestEspn({ ...game, clock_s: 750 }); // moved 4 s since the last poll => running
-    expect(app.engine.games.get("nhl:7")?.clock_running).toBe(true);
-    const ok = (await (await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" })).json()) as { delay_s: number; uncertainty_s: number };
-    expect(ok.delay_s).toBeGreaterThanOrEqual(19.5);
-    expect(ok.delay_s).toBeLessThanOrEqual(20.5);
+    app.engine.games.set(game.id, game);
+    const request = { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" };
+    const insufficient = await json("/api/calibrate", "POST", request);
+    expect(insufficient.status).toBe(409);
+    expect(await insufficient.json()).toEqual({ error: expect.stringMatching(/history.*retry.*ticking/) });
+    const now = Date.now();
+    app.engine.clockHistory.record({ ...game, clock_s: 774, clock_running: true }, now - 40_000);
+    app.engine.clockHistory.record({ ...game, clock_s: 766, clock_running: true }, now - 32_000);
+    const response = await json("/api/calibrate", "POST", request);
+    expect(response.status).toBe(200);
+    const ok = (await response.json()) as { delay_s: number; uncertainty_s: number };
+    expect(ok.delay_s).toBeGreaterThanOrEqual(35.5);
+    expect(ok.delay_s).toBeLessThanOrEqual(36.5);
     expect(ok.uncertainty_s).toBeGreaterThan(0);
+    expect((await json("/api/calibrate", "POST", { ...request, tv_clock: "1:60" })).status).toBe(400);
+    expect((await json("/api/calibrate", "POST", { ...request, tv_clock: "11:00" })).status).toBe(409);
     expect((await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "nope" })).status).toBe(400);
     expect((await json("/api/calibrate", "POST", { game_id: "nhl:404", tv_period: 2, tv_clock: "12:50" })).status).toBe(404);
     app.engine.ingestEspn({ ...game, status: "pre", clock_s: undefined });

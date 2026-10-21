@@ -10,6 +10,7 @@ import type { NhlGame } from "../providers/nhl.js";
 import { MEDIA_DIR, type Store } from "../store.js";
 import type { EventPayload, Game, Insight, Rgb, ScoringPlay, Settings, Team, UiEventType } from "../types.js";
 import { DelayBuffer } from "./delay.js";
+import { ClockHistory } from "./calibrate.js";
 import { diffGame, type Detected } from "./diff.js";
 import {
   buildSimGame,
@@ -54,6 +55,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   readonly games = new Map<string, Game>();
   /** what viewers are allowed to see (post delay) */
   readonly shown = new Map<string, Game>();
+  readonly clockHistory = new ClockHistory();
 
   private buffer: DelayBuffer<Out>;
   private chains = new Map<string, Promise<void>>();
@@ -204,7 +206,7 @@ export class Engine extends EventEmitter<EngineEvents> {
   /** Feed a fresh ESPN snapshot of a game. */
   ingestEspn(incoming: Game): void {
     const prev = this.games.get(incoming.id);
-    let next: Game = { ...incoming, authority: incoming.authority ?? "espn" };
+    let next: Game = { ...incoming, clock_at_ms: this.now(), authority: incoming.authority ?? "espn" };
     if (prev) {
       next = {
         ...incoming,
@@ -231,6 +233,7 @@ export class Engine extends EventEmitter<EngineEvents> {
           clock_s: prev.clock_s,
           clock_running: prev.clock_running,
           clock_dir: prev.clock_dir,
+          clock_at_ms: prev.clock_at_ms,
           intermission: prev.intermission,
           home: { ...next.home, score: prev.home.score },
           away: { ...next.away, score: prev.away.score },
@@ -238,6 +241,7 @@ export class Engine extends EventEmitter<EngineEvents> {
         };
       }
     }
+    if (next.authority === "espn") next.clock_at_ms = this.now();
     this.commit(prev, next);
   }
 
@@ -258,6 +262,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       clock_s: status === "in" && !isShootout(league, n.period) ? n.clockS : undefined,
       clock_running: status === "in" && !isShootout(league, n.period) ? n.clockRunning : false,
       clock_dir: "down",
+      clock_at_ms: this.now(),
       intermission: status === "in" && n.inIntermission,
       home: { ...prev.home, score: n.homeScore },
       away: { ...prev.away, score: n.awayScore },
@@ -285,6 +290,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       clock: status === "in" && m.situation ? `${m.situation.inning_state} ${m.inning}` : "",
       clock_s: undefined,
       clock_running: false,
+      clock_at_ms: this.now(),
       clock_dir: undefined,
       intermission: status === "in" && m.inIntermission,
       home: { ...prev.home, score: m.homeScore },
@@ -301,6 +307,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     // work on a copy: callers (and tests) keep their own objects, and later polls must not see our edits
     const next = structuredClone(incoming);
     this.inferClock(prev, next);
+    if (!prev || next.clock_at_ms !== prev.clock_at_ms) this.clockHistory.record(next, next.clock_at_ms ?? this.now());
     this.updatedAt.set(next.id, this.now());
     this.applyOverrides(next);
     const league = leagueById(next.league);
@@ -760,7 +767,13 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   /** Every buffer push goes through here so queued events are written to SQLite until they are released. */
   private pushOut(o: Out, delayMs: number, key: string): void {
+    const queuedAt = this.now();
+    if (o.kind === "game") {
+      // Enrichment and secondary-provider updates must not make an old clock look fresh.
+      o = { kind: "game", game: { ...o.game, clock_at_ms: (o.game.clock_at_ms ?? queuedAt) + delayMs } };
+    }
     const at = this.buffer.push(o, delayMs, key);
+    if (o.kind === "game") o.game.clock_at_ms = (o.game.clock_at_ms ?? at) + at - queuedAt - delayMs;
     if (o.kind === "event" && at > this.now()) {
       try {
         this.store.savePending(o.payload.event_id, o.payload.game.id, at, JSON.stringify(o.payload));
@@ -818,6 +831,7 @@ export class Engine extends EventEmitter<EngineEvents> {
           continue;
         }
         if (this.shown.has(g.id)) continue;
+        g.clock_at_ms ??= r.saved_at;
         this.shown.set(g.id, g);
         this.restoredAt.set(g.id, now);
         shown++;
@@ -857,6 +871,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     for (const [id, g] of this.games) {
       if (g.status === "post" && Date.parse(g.start_time) < cutoff) {
         this.games.delete(id);
+        this.clockHistory.delete(id);
         this.shown.delete(id);
         this.nhlSeen.delete(id);
         this.lastDecrease.delete(id);

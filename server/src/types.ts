@@ -149,6 +149,8 @@ export interface Game {
   clock_s?: number | undefined;
   clock_running?: boolean | undefined;
   clock_dir?: "down" | "up" | undefined;
+  /** Wall-clock anchor (epoch ms); shifted to the replay timeline on delayed snapshots. */
+  clock_at_ms?: number | undefined;
   intermission: boolean;
   home: Team;
   away: Team;

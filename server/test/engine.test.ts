@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Engine } from "../src/engine/engine.js";
 import { Store } from "../src/store.js";
 import type { NhlGame } from "../src/providers/nhl.js";
@@ -122,5 +122,68 @@ describe("Engine", () => {
     expect(events).toHaveLength(1);
     expect(events[0].test).toBe(true);
     expect(events[0].goal_horn).toBeUndefined(); // no public_base_url configured
+  });
+
+  it("replays a recorded stop/resume sequence 36 wall-clock seconds later, including provider jumps", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = new Store(":memory:");
+    store.patchSettings({ delay_global_s: 36 });
+    const engine = new Engine(store);
+    const released: { at: number; clock: number | undefined; running: boolean | undefined }[] = [];
+    engine.on("game", (g) => released.push({ at: Date.now(), clock: g.clock_s, running: g.clock_running }));
+    const observe = (at: number, seconds: number, running: boolean) => {
+      vi.advanceTimersByTime(at - Date.now());
+      engine.ingestEspn(mk({ clock: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`, clock_s: seconds, clock_running: running, clock_dir: "down" }));
+    };
+    try {
+      observe(0, 600, true);
+      observe(4000, 596, false);
+      observe(24000, 596, false);
+      observe(30000, 596, true);
+      observe(34000, 592, true);
+      expect(engine.shown.size).toBe(0);
+      observe(38000, 580, true); // discontinuity originates in the provider, not the buffer
+      vi.advanceTimersByTime(36_000);
+      expect(released).toEqual([
+        { at: 36000, clock: 600, running: true },
+        { at: 40000, clock: 596, running: false },
+        { at: 60000, clock: 596, running: false },
+        { at: 66000, clock: 596, running: true },
+        { at: 70000, clock: 592, running: true },
+        { at: 74000, clock: 580, running: true },
+      ]);
+      expect(engine.shown.get("nhl:1")?.clock_at_ms).toBe(74000);
+      expect(engine.games.get("nhl:1")?.clock_at_ms).toBe(38000);
+    } finally {
+      engine.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("secondary ESPN updates preserve the authoritative clock's age on the delayed timeline", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = new Store(":memory:");
+    store.patchSettings({ delay_global_s: 36 });
+    const engine = new Engine(store);
+    try {
+      engine.ingestEspn(mk());
+      vi.advanceTimersByTime(1000);
+      engine.ingestNhl("nhl:1", {
+        id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+        state: "in", period: 1, clock: "09:00", clockS: 540, clockRunning: true, inIntermission: false,
+        homeScore: 0, awayScore: 0, goals: [],
+      });
+      vi.advanceTimersByTime(3000);
+      engine.ingestEspn(mk({ clock: "10:00", clock_s: 600 }));
+      expect(engine.games.get("nhl:1")?.clock_at_ms).toBe(1000);
+      vi.advanceTimersByTime(36000);
+      expect(engine.shown.get("nhl:1")?.clock_at_ms).toBe(37000);
+      expect(engine.shown.get("nhl:1")?.clock_s).toBe(540);
+    } finally {
+      engine.stop();
+      vi.useRealTimers();
+    }
   });
 });

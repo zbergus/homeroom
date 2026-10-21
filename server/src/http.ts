@@ -8,7 +8,7 @@ import { type Config, loadConfig, securityNotes } from "./config.js";
 import type { Engine } from "./engine/engine.js";
 import type { Poller } from "./engine/poller.js";
 import { LEAGUES } from "./leagues.js";
-import { parseClock, suggestDelay } from "./engine/calibrate.js";
+import { parseClock } from "./engine/calibrate.js";
 import { isTriggerId, TRIGGERS } from "./engine/triggers.js";
 import type { Dispatcher } from "./outputs/dispatch.js";
 import type { HaOutputs } from "./outputs/ha.js";
@@ -248,11 +248,12 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     if (!g) return reply.code(404).send({ error: "unknown game" });
     const tv = parseClock(b.tv_clock ?? "");
     if (tv === undefined || b.tv_period === undefined || !Number.isInteger(b.tv_period) || b.tv_period < 1) return reply.code(400).send({ error: "tv_period (1..) and tv_clock (M:SS) are required" });
-    if (g.status !== "in" || g.clock_s === undefined || !g.clock_dir) return reply.code(409).send({ error: "this game has no live clock to compare against" });
-    return suggestDelay(
-      { league: g.league, period: g.period, clock_s: g.clock_s, clock_running: !!g.clock_running, clock_dir: g.clock_dir, age_s: engine.rawAgeS(g.id) },
-      { period: b.tv_period, clock_s: tv },
-    );
+    if (g.status !== "in") return reply.code(409).send({ error: "This game is not live. Try again while the TV game clock is ticking." });
+    const suggestion = engine.clockHistory.suggest(g.id, { period: b.tv_period, clock_s: tv }, Date.now());
+    if (!suggestion) return reply.code(409).send({
+      error: "No unique match in recent clock history. Wait for a few live polls, check the period and clock, and retry while the TV clock is ticking; stopped clocks and polling gaps cannot be calibrated reliably.",
+    });
+    return suggestion;
   });
 
   const fire = (o: { trigger?: string | undefined; league?: string | undefined; team_abbr?: string | undefined; game_id?: string | undefined; apply_delay?: boolean | undefined }) => {

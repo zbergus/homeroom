@@ -101,6 +101,8 @@ export interface Game {
   clock: string;
   /** numeric clock for client-side interpolation between updates */
   clock_s?: number | undefined;
+  /** Wall-clock anchor (epoch ms) on the server's delayed replay timeline. */
+  clock_at_ms?: number | undefined;
   clock_running?: boolean | undefined;
   clock_dir?: "down" | "up" | undefined;
   intermission: boolean;
