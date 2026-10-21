@@ -30,7 +30,7 @@ export class UiHub {
           /* ignore */
         }
       });
-      ws.send(JSON.stringify({ t: "snapshot", games: [...engine.shown.values()], settings: this.publicSettings() }));
+      ws.send(JSON.stringify({ t: "snapshot", games: [...engine.shown.values()], settings: this.publicSettings(), server_now_ms: Date.now() }));
     });
     this.heartbeat = setInterval(() => {
       for (const ws of this.views.keys()) if (ws.readyState === WebSocket.OPEN) ws.ping();
@@ -50,14 +50,14 @@ export class UiHub {
   }
 
   game(g: Game): void {
-    this.broadcast({ t: "game", game: g });
+    this.broadcast({ t: "game", game: g, server_now_ms: Date.now() });
   }
   event(e: EventPayload): void {
     this.broadcast({ t: "event", event: e });
   }
   /** Replace every viewer's game map (e.g. after simulation stop removes nhl:sim). */
   snapshot(): void {
-    this.broadcast({ t: "snapshot", games: [...this.engine.shown.values()], settings: this.publicSettings() });
+    this.broadcast({ t: "snapshot", games: [...this.engine.shown.values()], settings: this.publicSettings(), server_now_ms: Date.now() });
   }
 
   private broadcast(msg: unknown): void {

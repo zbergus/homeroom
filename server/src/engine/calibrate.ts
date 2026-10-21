@@ -77,8 +77,12 @@ export class ClockHistory {
     for (let i = 0; i < history.length; i++) {
       const b = history[i];
       if (!b || b.at > now || b.period !== tv.period) continue;
-      // Repeated stopped readings must widen the match, not masquerade as one instant.
-      if (b.status === "in" && b.clock_s !== undefined && Math.abs(b.clock_s - tv.clock_s) <= CLOCK_TOLERANCE_S) match(b.at, b.at);
+      // Repeated readings must not masquerade as one instant.
+      if (b.status === "in" && b.clock_s !== undefined && Math.abs(b.clock_s - tv.clock_s) <= CLOCK_TOLERANCE_S) {
+        // Even one stopped sample has an unknown duration; a nearby running match cannot resolve it.
+        if (b.intermission || b.clock_running !== true) return undefined;
+        match(b.at, b.at);
+      }
       if (!usable(b)) continue;
       const a = history[i - 1];
       if (!a || !usable(a) || !a.clock_running || !b.clock_running || a.period !== b.period || a.clock_dir !== b.clock_dir) continue;

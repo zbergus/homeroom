@@ -336,8 +336,8 @@ export interface LightAction {
 }
 
 export type ServerMsg =
-  | { t: "snapshot"; games: Game[]; settings?: Settings | undefined }
-  | { t: "game"; game: Game }
+  | { t: "snapshot"; games: Game[]; settings?: Settings | undefined; server_now_ms?: number | undefined }
+  | { t: "game"; game: Game; server_now_ms?: number | undefined }
   | { t: "event"; event: EventPayload };
 
 export type ViewName = "scoreboard" | "grid" | "ticker" | "control";

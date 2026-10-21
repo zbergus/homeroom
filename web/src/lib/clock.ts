@@ -15,6 +15,12 @@ type ClockFields = Pick<Game, "clock"> & Partial<Pick<Game, "id" | "period" | "c
 
 const MAX_ADVANCE_S = 10;
 
+/** Preserve snapshot age without requiring the kiosk's clock to match the server's. */
+export function localClock(game: Game, serverNowMs: number | undefined, receivedAtMs: number): Game {
+  if (!Number.isFinite(serverNowMs) || !Number.isFinite(game.clock_at_ms)) return game;
+  return { ...game, clock_at_ms: receivedAtMs - ((serverNowMs ?? 0) - (game.clock_at_ms ?? 0)) };
+}
+
 interface ClockReading { seconds: number | null; text: string }
 
 function formatClock(totalSeconds: number, minutesOnly = false): string {

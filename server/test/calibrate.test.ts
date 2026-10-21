@@ -97,6 +97,18 @@ describe("calibration", () => {
     expect(history.suggest("nhl:7", reading(798), 40_000)).toBeUndefined();
   });
 
+  it.each([
+    { clock_running: false },
+    { clock_running: undefined },
+    { intermission: true },
+  ])("rejects even a single matching stopped or uncertain observation: %j", (over) => {
+    const history = new ClockHistory();
+    history.record(clock(802), 0);
+    history.record(clock(798), 4000);
+    history.record(clock(798, over), 5000);
+    expect(history.suggest("nhl:7", reading(798), 40_000)).toBeUndefined();
+  });
+
   it("treats an intermission's repeated clock as ambiguous, not a unique period-end instant", () => {
     const history = new ClockHistory();
     history.record(clock(4), 0);

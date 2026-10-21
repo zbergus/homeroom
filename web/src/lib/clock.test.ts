@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { interpolateClock } from "./clock";
+import { interpolateClock, localClock } from "./clock";
+import type { Game } from "../types";
 
 describe("delayed clock playback", () => {
   it("ticks from the delayed replay anchor, not the original live observation", () => {
@@ -17,6 +18,17 @@ describe("delayed clock playback", () => {
   it("does not restart an old clock when reconnecting or receiving enrichment", () => {
     const game = { clock: "9:00", clock_s: 540, clock_running: true, clock_at_ms: 37000 };
     expect(interpolateClock(game, 40000, 42000).text).toBe("8:55");
+  });
+
+  it("preserves replay age on kiosks ahead of or behind the server clock", () => {
+    const game = { clock: "9:00", clock_s: 540, clock_running: true, clock_at_ms: 37000 } as Game;
+    for (const skew of [-30000, 30000]) {
+      const receivedAt = 40000 + skew;
+      const local = localClock(game, 40000, receivedAt);
+      expect(interpolateClock(local, receivedAt, receivedAt + 2000).text).toBe("8:55");
+    }
+    expect(game.clock_at_ms).toBe(37000);
+    expect(localClock(game, undefined, 40000)).toBe(game);
   });
 
   it("bounds stale extrapolation in both directions and never goes below zero", () => {

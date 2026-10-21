@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import type { EventPayload, Game, ServerMsg, Settings, ViewName } from "../types";
+import { localClock } from "./clock";
 
 export type ConnState = "connecting" | "open" | "closed" | "mock";
 
@@ -62,8 +63,9 @@ function connect() {
   sock.onmessage = (ev) => {
     let m: ServerMsg;
     try { m = JSON.parse(ev.data as string); } catch { return; }
-    if (m.t === "snapshot") { sink.snapshot(m.games ?? []); if (m.settings) set({ settings: m.settings }); }
-    else if (m.t === "game") sink.game(m.game);
+    const receivedAt = Date.now();
+    if (m.t === "snapshot") { sink.snapshot((m.games ?? []).map((g) => localClock(g, m.server_now_ms, receivedAt))); if (m.settings) set({ settings: m.settings }); }
+    else if (m.t === "game") sink.game(localClock(m.game, m.server_now_ms, receivedAt));
     else if (m.t === "event") sink.event(m.event);
   };
   sock.onclose = () => {

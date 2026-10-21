@@ -36,6 +36,8 @@ ESPN summary / team schedule / stats   ┘                    │
 
 Calibration (`engine/calibrate.ts`) matches the TV period/clock against recent timestamped feed history rather than subtracting game-clock seconds. Submit promptly while the TV clock is ticking; typing time and provider latency contribute to uncertainty. Short, consistent running intervals can be interpolated, but gaps and discontinuities cannot. Repeated stopped-clock readings are ambiguous and return an actionable error instead of a misleading delay. History is in memory and warms up again after a restart; allow up to two minutes for the full supported delay range.
 
+UI snapshot/game WebSocket messages include `server_now_ms`. At receipt the browser translates `clock_at_ms` into its local time domain, preserving the observation's age even if the kiosk and server clocks differ.
+
 **Dispatcher** (`outputs/dispatch.ts`): the single exit for released events (see data flow). `goal_overturned` is UI/REST only.
 
 **Sync model**: a game is synced if ticked by the user, or (auto-sync) it contains a favourite team, unless in `sync_excluded` (`Engine.isSynced`). Events only fire for synced games; the grid and ticker show every game of the enabled leagues.

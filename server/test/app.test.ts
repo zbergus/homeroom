@@ -176,6 +176,30 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
 });
 
 describe("control plane", () => {
+  it("UI websocket snapshots and game updates include server clock reference timestamps", async () => {
+    const before = Date.now();
+    const game = gameOf({ status: "in", period: 2, clock_s: 754, clock_dir: "down" });
+    app.engine.ingestEspn(game);
+    const messages: { t: string; server_now_ms: number; games?: Game[]; game?: Game }[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    ws.on("message", (raw) => messages.push(JSON.parse(raw.toString())));
+    try {
+      await vi.waitFor(() => expect(messages.some((m) => m.t === "snapshot")).toBe(true));
+      expect(messages[0]?.games?.[0]?.clock_at_ms).toBeGreaterThanOrEqual(before);
+      app.engine.ingestEspn({ ...game, clock_s: 750 });
+      await vi.waitFor(() => expect(messages.some((m) => m.t === "game")).toBe(true));
+      expect(messages.find((m) => m.t === "game")?.game?.clock_at_ms).toBeGreaterThanOrEqual(before);
+      app.ui.snapshot();
+      await vi.waitFor(() => expect(messages.filter((m) => m.t === "snapshot")).toHaveLength(2));
+      for (const message of messages) {
+        expect(message.server_now_ms).toBeGreaterThanOrEqual(before);
+        expect(message.server_now_ms).toBeLessThanOrEqual(Date.now());
+      }
+    } finally {
+      ws.close();
+    }
+  });
+
   it("never returns the Home Assistant token; blank keeps it, clear_token removes it", async () => {
     await json("/api/settings", "PUT", { ha: { url: "http://ha.local:8123", token: "s3cret", fire_rest_events: false } });
     let s = await getJson<{ ha: { token_set: boolean } }>("/api/settings");
