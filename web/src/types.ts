@@ -101,6 +101,8 @@ export interface Game {
   clock: string;
   /** numeric clock for client-side interpolation between updates */
   clock_s?: number | undefined;
+  /** Wall-clock anchor (epoch ms) on the server's delayed replay timeline. */
+  clock_at_ms?: number | undefined;
   clock_running?: boolean | undefined;
   clock_dir?: "down" | "up" | undefined;
   intermission: boolean;
@@ -334,8 +336,8 @@ export interface LightAction {
 }
 
 export type ServerMsg =
-  | { t: "snapshot"; games: Game[]; settings?: Settings | undefined }
-  | { t: "game"; game: Game }
+  | { t: "snapshot"; games: Game[]; settings?: Settings | undefined; server_now_ms?: number | undefined }
+  | { t: "game"; game: Game; server_now_ms?: number | undefined }
   | { t: "event"; event: EventPayload };
 
 export type ViewName = "scoreboard" | "grid" | "ticker" | "control";

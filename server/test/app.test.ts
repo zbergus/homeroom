@@ -176,6 +176,30 @@ describe("Home Assistant integration compatibility (what pysher does)", () => {
 });
 
 describe("control plane", () => {
+  it("UI websocket snapshots and game updates include server clock reference timestamps", async () => {
+    const before = Date.now();
+    const game = gameOf({ status: "in", period: 2, clock_s: 754, clock_dir: "down" });
+    app.engine.ingestEspn(game);
+    const messages: { t: string; server_now_ms: number; games?: Game[]; game?: Game }[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${app.port}/ws`);
+    ws.on("message", (raw) => messages.push(JSON.parse(raw.toString())));
+    try {
+      await vi.waitFor(() => expect(messages.some((m) => m.t === "snapshot")).toBe(true));
+      expect(messages[0]?.games?.[0]?.clock_at_ms).toBeGreaterThanOrEqual(before);
+      app.engine.ingestEspn({ ...game, clock_s: 750 });
+      await vi.waitFor(() => expect(messages.some((m) => m.t === "game")).toBe(true));
+      expect(messages.find((m) => m.t === "game")?.game?.clock_at_ms).toBeGreaterThanOrEqual(before);
+      app.ui.snapshot();
+      await vi.waitFor(() => expect(messages.filter((m) => m.t === "snapshot")).toHaveLength(2));
+      for (const message of messages) {
+        expect(message.server_now_ms).toBeGreaterThanOrEqual(before);
+        expect(message.server_now_ms).toBeLessThanOrEqual(Date.now());
+      }
+    } finally {
+      ws.close();
+    }
+  });
+
   it("never returns the Home Assistant token; blank keeps it, clear_token removes it", async () => {
     await json("/api/settings", "PUT", { ha: { url: "http://ha.local:8123", token: "s3cret", fire_rest_events: false } });
     let s = await getJson<{ ha: { token_set: boolean } }>("/api/settings");
@@ -252,15 +276,24 @@ describe("control plane", () => {
     expect(((await link.json()) as { success: boolean }).success).toBe(true);
   });
 
-  it("POST /api/calibrate turns a TV clock reading into a suggested delay", async () => {
+  it("POST /api/calibrate requires a unique timestamped historical clock match", async () => {
     const game = gameOf({ status: "in", period: 2, period_label: "2nd period", clock: "12:34", clock_s: 754, clock_dir: "down" });
-    app.engine.ingestEspn(game);
-    app.engine.ingestEspn({ ...game, clock_s: 750 }); // moved 4 s since the last poll => running
-    expect(app.engine.games.get("nhl:7")?.clock_running).toBe(true);
-    const ok = (await (await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" })).json()) as { delay_s: number; uncertainty_s: number };
-    expect(ok.delay_s).toBeGreaterThanOrEqual(19.5);
-    expect(ok.delay_s).toBeLessThanOrEqual(20.5);
+    app.engine.games.set(game.id, game);
+    const request = { game_id: "nhl:7", tv_period: 2, tv_clock: "12:50" };
+    const insufficient = await json("/api/calibrate", "POST", request);
+    expect(insufficient.status).toBe(409);
+    expect(await insufficient.json()).toEqual({ error: expect.stringMatching(/history.*retry.*ticking/) });
+    const now = Date.now();
+    app.engine.clockHistory.record({ ...game, clock_s: 774, clock_running: true }, now - 40_000);
+    app.engine.clockHistory.record({ ...game, clock_s: 766, clock_running: true }, now - 32_000);
+    const response = await json("/api/calibrate", "POST", request);
+    expect(response.status).toBe(200);
+    const ok = (await response.json()) as { delay_s: number; uncertainty_s: number };
+    expect(ok.delay_s).toBeGreaterThanOrEqual(35.5);
+    expect(ok.delay_s).toBeLessThanOrEqual(36.5);
     expect(ok.uncertainty_s).toBeGreaterThan(0);
+    expect((await json("/api/calibrate", "POST", { ...request, tv_clock: "1:60" })).status).toBe(400);
+    expect((await json("/api/calibrate", "POST", { ...request, tv_clock: "11:00" })).status).toBe(409);
     expect((await json("/api/calibrate", "POST", { game_id: "nhl:7", tv_period: 2, tv_clock: "nope" })).status).toBe(400);
     expect((await json("/api/calibrate", "POST", { game_id: "nhl:404", tv_period: 2, tv_clock: "12:50" })).status).toBe(404);
     app.engine.ingestEspn({ ...game, status: "pre", clock_s: undefined });

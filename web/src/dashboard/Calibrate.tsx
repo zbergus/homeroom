@@ -11,14 +11,14 @@ const gameName = (g: Game) => `${g.away.abbr} @ ${g.home.abbr} (${g.league.toUpp
 
 function friendly(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 409) return "That game has no live clock right now (between periods, or the feed has none). Pick another live game, or try again once play resumes.";
+    if (e.status === 409) return e.message;
     if (e.status === 404) return "The server no longer knows that game. Refresh the list and pick another.";
     if (e.status === 400) return "Enter the TV period as a number (1, 2, 3...) and the clock as minutes:seconds, like 12:34.";
   }
   return `Calibration failed: ${errMsg(e)}`;
 }
 
-/** Type the clock you see on the TV; compare with the live feed to estimate the stream delay. */
+/** Match the TV reading against timestamped observations, including stoppages. */
 export default function Calibrate({ settings, update, live, active }: { settings: Settings; update: (p: Partial<Settings>) => void; live: Map<string, Game>; active: boolean }) {
   const raw = usePoll(api.gamesRaw, 3000, active);
   const candidates = useMemo(() => (raw.data ?? []).filter((g) => g.status === "in" && typeof g.clock_s === "number"), [raw.data]);
@@ -55,7 +55,7 @@ export default function Calibrate({ settings, update, live, active }: { settings
     <div className="rounded-xl border border-white/10 bg-ink-900 p-4">
       <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Calibrate</h3>
       <p className="mt-1 text-sm text-slate-300">
-        Pick a live game, look at the clock on your TV right now, and type it in. We compare it with the live feed and suggest a delay. It is an estimate, good to a couple of seconds.
+        While the TV clock is ticking, enter its period and clock and submit promptly. We match it against recent feed history, including whistles and pauses, to estimate your delay. Allow up to two minutes of history after startup. A stopped clock cannot uniquely identify a delay; try again after play resumes.
       </p>
       {raw.err && <div className="mt-3"><Notice kind="err">Could not load live games: {raw.err}</Notice></div>}
       {raw.loading && !raw.data && <p className="mt-3 text-sm text-slate-400">Loading live games...</p>}
