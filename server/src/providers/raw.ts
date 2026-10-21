@@ -28,6 +28,18 @@ export function finite(v: unknown): number | undefined {
   return undefined;
 }
 
+/** Digits-only id (safe integer or numeric string); rejects floats and junk. */
+export function digits(v: unknown): string | undefined {
+  const s = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : typeof v === "string" ? v : "";
+  return /^[0-9]+$/.test(s) ? s : undefined;
+}
+
+/** Stable celebration / media key: `nhl:8478402`, `espn:5080172`, `mlb:691406`. */
+export function namespacedId(ns: "nhl" | "espn" | "mlb", v: unknown): string | undefined {
+  const id = digits(v);
+  return id ? `${ns}:${id}` : undefined;
+}
+
 /** Strings of an array; anything else (and non-string items) is dropped. */
 export function strArr(v: unknown): string[] {
   return Array.isArray(v) ? v.flatMap((x) => (typeof x === "string" && x ? [x] : [])) : [];

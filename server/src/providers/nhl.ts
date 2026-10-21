@@ -1,5 +1,5 @@
 import type { ScoringPlay } from "../types.js";
-import { getJson as fetchJson, optStr, type Raw, str } from "./raw.js";
+import { digits, getJson as fetchJson, namespacedId, optStr, type Raw, str } from "./raw.js";
 import { normStrength, parseSituation, strengthFromSituation } from "./strength.js";
 
 const BASE = process.env.NHL_BASE ?? "https://api-web.nhle.com/v1";
@@ -45,15 +45,7 @@ const stateOf = (s: string): NhlGame["state"] => {
 };
 
 const ord = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : n === 4 ? "OT" : n === 5 ? "SO" : `${n}`);
-
-const digits = (v: unknown): string | undefined => {
-  const s = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : typeof v === "string" ? v : "";
-  return /^[0-9]+$/.test(s) ? s : undefined;
-};
-const scorerId = (v: unknown): string | undefined => {
-  const id = digits(v);
-  return id ? `nhl:${id}` : undefined;
-};
+const scorerId = (v: unknown) => namespacedId("nhl", v);
 
 export function normalizeNhl(g: Raw): NhlGame {
   const goals: ScoringPlay[] = (g.goals ?? []).map((x: Raw): ScoringPlay => ({

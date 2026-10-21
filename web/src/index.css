@@ -54,7 +54,7 @@ html.kiosk-html, html.kiosk-html body { overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   /* overlay stays visible, only motion is removed */
-  .goal-enter, .goal-sweep, .goal-text, .slide-up, .score-pop, .card-pulse, .live-dot { animation: none !important; }
+  .goal-enter, .goal-sweep, .goal-text, .goal-wall, .slide-up, .score-pop, .card-pulse, .live-dot { animation: none !important; }
   .goal-bg { animation: none !important; opacity: 1; }
   .fade-in { animation: none !important; }
   .marquee-track { animation-duration: 240s; }

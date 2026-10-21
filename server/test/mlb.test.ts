@@ -66,6 +66,7 @@ describe("MLB Stats API Provider & Home Run vs Run Triggers", () => {
     // Play 3: 2-run Home Run by Junior Caminero
     const p3 = g.goals[3]!;
     expect(p3.scorer).toBe("Junior Caminero");
+    expect(p3.scorer_id).toBe("mlb:691406");
     expect(p3.team_abbr).toBe("TB");
     expect(p3.period).toBe(7);
     expect(p3.period_label).toBe("Bot 7th");

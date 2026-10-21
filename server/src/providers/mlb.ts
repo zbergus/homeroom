@@ -1,5 +1,5 @@
 import type { BaseballSituation, ScoringPlay } from "../types.js";
-import { getJson as fetchJson, optStr, type Raw, str } from "./raw.js";
+import { digits, getJson as fetchJson, namespacedId, optStr, type Raw, str } from "./raw.js";
 
 const BASE = process.env.MLB_BASE ?? "https://statsapi.mlb.com/api";
 
@@ -85,6 +85,8 @@ export function parseScoringPlay(p: Raw, gamePk: number, homeAbbr: string, awayA
     clock: `${halfLabel} ${inn}`,
     team_abbr: teamAbbr,
     scorer: batter,
+    scorer_id: namespacedId("mlb", p.matchup?.batter?.id),
+    scorer_number: digits(p.matchup?.batter?.primaryNumber ?? p.matchup?.batter?.jerseyNumber),
     assists: [],
     strength: isHr ? "HR" : undefined,
     text: desc,

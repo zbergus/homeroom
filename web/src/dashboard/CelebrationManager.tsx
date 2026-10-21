@@ -31,7 +31,7 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   }, [league]);
   const players = knownScorers(games.values(), league, abbr);
   const assignment = playerId.trim() || "default";
-  const validPlayer = assignment === "default" || /^nhl:\d{1,12}$/.test(assignment);
+  const validPlayer = assignment === "default" || /^(?:nhl|espn|mlb):\d{1,12}$/.test(assignment);
 
   const upload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,8 +60,8 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   };
 
   return (
-    <Card title="Celebration videos" subtitle="Optional local MP4s for Scoreboard and Plate: player video → team video → built-in celebration.">
-      <p className="text-sm text-slate-400">Clips play muted for up to 6 seconds, respecting your stream delay. Lights, horns and announcements are unchanged. Use H.264 MP4 for broad browser support; upload only videos you have permission to use.</p>
+    <Card title="Celebration videos" subtitle="Optional local MP4s for every TV view: player video → team video → built-in GOAL wall.">
+      <p className="text-sm text-slate-400">Clips play muted for up to 6 seconds on Scoreboard, Plate, SportsGrid and Ticker, respecting your stream delay. Lights, horns and announcements are unchanged. Use H.264 MP4 for broad browser support; upload only videos you have permission to use.</p>
       {err && <Notice kind="err">{err}</Notice>}
       {notice && <p role="status" className="mt-2 text-sm text-emerald-300">{notice}</p>}
       <form onSubmit={upload} className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -76,8 +76,8 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
             {teams.map((t) => <option key={t.abbr} value={t.abbr}>{t.abbr} {t.name}</option>)}
           </select>
         </Field>
-        <Field label="NHL player ID (optional)" htmlFor="celebration-player">
-          <input id="celebration-player" className={inputCls} list="celebration-players" value={playerId} disabled={busy || league !== "nhl"} placeholder="Blank = team celebration" aria-describedby="celebration-player-help"
+        <Field label="Player ID (optional)" htmlFor="celebration-player">
+          <input id="celebration-player" className={inputCls} list="celebration-players" value={playerId} disabled={busy} placeholder="Blank = team celebration" aria-describedby="celebration-player-help"
             onChange={(e) => setPlayerId(e.target.value)} />
           <datalist id="celebration-players">
             {players.map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ""}</option>)}
@@ -88,9 +88,9 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
             onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </Field>
         <p id="celebration-player-help" className="text-xs text-slate-400 sm:col-span-2">
-          NHL: choose a known scorer or enter nhl: followed by the numeric ID from the player’s NHL.com page (not their jersey number). Other leagues support team videos.
+          Choose a known scorer from live game data, or enter <code className="text-slate-300">nhl:</code>, <code className="text-slate-300">espn:</code>, or <code className="text-slate-300">mlb:</code> plus the numeric player ID (not jersey number). Leave blank for the team fallback.
         </p>
-        {!validPlayer && <p role="alert" className="text-sm text-amber-300">Use an NHL player ID such as nhl:8478402, or leave blank for the team fallback.</p>}
+        {!validPlayer && <p role="alert" className="text-sm text-amber-300">Use an id such as nhl:8478402, espn:5080172 or mlb:691406, or leave blank for the team fallback.</p>}
         <div><Button type="submit" variant="primary" disabled={busy || !file || !league || !abbr || !validPlayer}>{busy ? "Saving…" : "Upload / replace"}</Button></div>
       </form>
       <ul className="mt-5 flex flex-col gap-2">
