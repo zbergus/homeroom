@@ -25,6 +25,8 @@ export interface ScoringPlay {
   clock: string;
   team_abbr: string;
   scorer?: string | undefined;
+  scorer_id?: string | undefined;
+  scorer_number?: string | undefined;
   assists: string[];
   strength?: string | undefined;
   text?: string | undefined;
@@ -193,6 +195,8 @@ export interface EventPayload {
   scoring?: {
     label: string;
     scorer?: string | undefined;
+    scorer_id?: string | undefined;
+    scorer_number?: string | undefined;
     assists: string[];
     strength?: string | undefined;
     delta: number;

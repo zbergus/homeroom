@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
 import { leagueById } from "../src/leagues.js";
 import { normalizeNhl, parsePbp } from "../src/providers/nhl.js";
 import { normalizeEvent, pickLeader } from "../src/providers/espn.js";
@@ -63,6 +64,26 @@ describe("ESPN scoreboard parsing under payload drift", () => {
 });
 
 describe("NHL parsing under payload drift", () => {
+  it("captures stable scorer IDs from real score and PBP payloads and sweater numbers from the roster", () => {
+    const score = JSON.parse(fs.readFileSync(new URL("./fixtures/nhl-score-now-live.json", import.meta.url), "utf8"));
+    const pbp = JSON.parse(fs.readFileSync(new URL("./fixtures/nhl-pbp-2026020135.json", import.meta.url), "utf8"));
+    const game = score.games.find((g: { goals?: unknown[] }) => g.goals?.length);
+    expect(normalizeNhl(game).goals[0]).toMatchObject({ scorer_id: "nhl:8480434", scorer: "Sean Durzi" });
+    expect(parsePbp(pbp).goals[0]).toMatchObject({ scorer_id: "nhl:8483525", scorer_number: "22", scorer: "Danila Yurov" });
+  });
+
+  it("does not invent scorer identity/number from names, missing rosters or malformed IDs", () => {
+    for (const playerId of [undefined, {}, "abc", -1, 1.5]) {
+      const g = normalizeNhl({ goals: [{ playerId, sweaterNumber: {}, name: { default: "Name" } }] });
+      expect(g.goals[0]?.scorer_id).toBeUndefined();
+      expect(g.goals[0]?.scorer_number).toBeUndefined();
+    }
+    const goals = parsePbp({ plays: [{ typeDescKey: "goal", details: { scoringPlayerId: 12345 } }] }).goals;
+    expect(goals[0]?.scorer_id).toBe("nhl:12345");
+    expect(goals[0]?.scorer_number).toBeUndefined();
+    expect(goals[0]?.scorer).toBeUndefined();
+  });
+
   it("score/now: names, ids and abbreviations always come out as strings and numbers", () => {
     const g = normalizeNhl({ id: "2026020135", gameDate: 20261019, homeTeam: { abbrev: { x: 1 }, name: { default: "Wild" } }, awayTeam: { abbrev: "CBJ" }, goals: [{ assists: [{ name: { default: "A" } }, { name: {} }], name: { default: "Solo" } }] });
     expect(g.id).toBe(2026020135);

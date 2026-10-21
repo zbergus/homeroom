@@ -46,6 +46,15 @@ const stateOf = (s: string): NhlGame["state"] => {
 
 const ord = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : n === 4 ? "OT" : n === 5 ? "SO" : `${n}`);
 
+const digits = (v: unknown): string | undefined => {
+  const s = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : typeof v === "string" ? v : "";
+  return /^[0-9]+$/.test(s) ? s : undefined;
+};
+const scorerId = (v: unknown): string | undefined => {
+  const id = digits(v);
+  return id ? `nhl:${id}` : undefined;
+};
+
 export function normalizeNhl(g: Raw): NhlGame {
   const goals: ScoringPlay[] = (g.goals ?? []).map((x: Raw): ScoringPlay => ({
     key: `nhl-${g.id}-${x.period}-${x.timeInPeriod}-${x.homeScore}-${x.awayScore}`,
@@ -54,6 +63,8 @@ export function normalizeNhl(g: Raw): NhlGame {
     clock: String(x.timeInPeriod ?? ""),
     team_abbr: String(x.teamAbbrev ?? ""),
     scorer: [str(x.firstName?.default), str(x.lastName?.default)].filter(Boolean).join(" ") || optStr(x.name?.default),
+    scorer_id: scorerId(x.playerId),
+    scorer_number: digits(x.sweaterNumber),
     assists: (x.assists ?? []).flatMap((a: Raw) => optStr(a.name?.default) ?? []),
     strength: normStrength(x.strength, x.goalModifier === "empty-net"),
     home_score: Number(x.homeScore ?? 0),
@@ -102,7 +113,12 @@ export function withOfficialStrength(pbpGoals: ScoringPlay[], official: ScoringP
 /** Pure parse of a play-by-play payload (score, clock, goals with scorers, current skater situation). */
 export function parsePbp(d: Raw): NhlGame {
   const roster = new Map<number, string>();
-  for (const r of d.rosterSpots ?? []) roster.set(r.playerId, `${r.firstName?.default ?? ""} ${r.lastName?.default ?? ""}`.trim());
+  const numbers = new Map<number, string>();
+  for (const r of d.rosterSpots ?? []) {
+    roster.set(Number(r.playerId), `${str(r.firstName?.default)} ${str(r.lastName?.default)}`.trim());
+    const number = digits(r.sweaterNumber);
+    if (number !== undefined) numbers.set(Number(r.playerId), number);
+  }
   const abbrById = new Map<number, string>([[Number(d.homeTeam?.id), str(d.homeTeam?.abbrev)], [Number(d.awayTeam?.id), str(d.awayTeam?.abbrev)]]);
   const goals: ScoringPlay[] = (d.plays ?? [])
     .filter((p: Raw) => p.typeDescKey === "goal")
@@ -115,7 +131,9 @@ export function parsePbp(d: Raw): NhlGame {
         period_label: ord(per),
         clock: String(p.timeInPeriod ?? ""),
         team_abbr: abbrById.get(Number(x.eventOwnerTeamId)) ?? "",
-        scorer: roster.get(x.scoringPlayerId),
+        scorer: roster.get(Number(x.scoringPlayerId)),
+        scorer_id: scorerId(x.scoringPlayerId),
+        scorer_number: numbers.get(Number(x.scoringPlayerId)),
         assists: [x.assist1PlayerId, x.assist2PlayerId].flatMap((i: number) => (i ? (roster.get(i) ?? []) : [])),
         strength: strengthFromSituation(p.situationCode, x.eventOwnerTeamId === d.homeTeam?.id),
         home_score: Number(x.homeScore ?? 0),
