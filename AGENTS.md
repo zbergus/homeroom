@@ -55,3 +55,6 @@ Always finish a change with: server `npm run typecheck && npm run lint && npx vi
 
 ## More
 Provider quirks, Playwright/browser notes and the implemented/unverified/backlog status live in [`docs/AGENT-NOTES.md`](docs/AGENT-NOTES.md); read it when touching providers or planning new work.
+
+## Homelab rules
+@[core](/home/antigravity/docs/core.md)
