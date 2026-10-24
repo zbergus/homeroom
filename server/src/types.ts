@@ -253,6 +253,8 @@ export interface Settings {
   horn_volume: number | null;
   /** media_player.* entities whose volume is set for the horn (needs ha.url + token) */
   horn_players: string[];
+  /** Language for TTS announcements per team (e.g. MTL: "fr", or "nhl:MTL": "fr"). Defaults to MTL: fr. */
+  team_languages: Record<string, "en" | "fr">;
 }
 
 export interface LightAction {

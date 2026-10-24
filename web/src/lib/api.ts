@@ -77,6 +77,10 @@ export const api = {
     const f = new FormData(); f.append("file", file);
     await req("POST", celebrationPath(league, abbr, playerId), undefined, f);
   },
+  importCelebration: async (league: string, abbr: string, playerId: string, url: string) => {
+    if (isMockUrl()) return (await import("./mockApi")).mockImportCelebration(league, abbr, playerId, url);
+    await req("POST", `${celebrationPath(league, abbr, playerId)}/import`, { url });
+  },
   deleteCelebration: async (v: CelebrationVideo) => {
     if (isMockUrl()) return (await import("./mockApi")).mockDeleteCelebration(v);
     await req("DELETE", celebrationPath(v.league, v.abbr, v.player_id));

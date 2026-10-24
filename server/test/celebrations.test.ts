@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { MEDIA_DIR, Store } from "../src/store.js";
-import { celebrationRoutes, MAX_CELEBRATION_BYTES } from "../src/video/celebrations.js";
+import { celebrationRoutes, isPrivateHost, MAX_CELEBRATION_BYTES, resolveCelebrationUrl } from "../src/video/celebrations.js";
 
 const mediaDir = path.join(MEDIA_DIR, "celebrations-test");
 const library = path.join(mediaDir, "celebrations");
@@ -132,6 +132,63 @@ describe("local celebration library", () => {
     // Replacement replaces the link itself, never the file it points at.
     expect((await upload(mp4, "/api/celebrations/nhl/MIN/default")).statusCode).toBe(200);
     expect(fs.lstatSync(path.join(dir, "default.mp4")).isSymbolicLink()).toBe(false);
+  });
+
+  it("resolves Giphy URLs and enforces SSRF host protections", () => {
+    expect(resolveCelebrationUrl("https://giphy.com/gifs/canadiensmtl-caufield-xyz123")).toBe("https://media.giphy.com/media/xyz123/giphy.mp4");
+    expect(resolveCelebrationUrl("https://giphy.com/gifs/xyz123")).toBe("https://media.giphy.com/media/xyz123/giphy.mp4");
+    expect(resolveCelebrationUrl("https://media.giphy.com/media/xyz123/giphy.gif")).toBe("https://media.giphy.com/media/xyz123/giphy.mp4");
+    expect(resolveCelebrationUrl("https://example.com/goal.mp4")).toBe("https://example.com/goal.mp4");
+
+    expect(isPrivateHost("localhost")).toBe(true);
+    expect(isPrivateHost("127.0.0.1")).toBe(true);
+    expect(isPrivateHost("192.168.1.50")).toBe(true);
+    expect(isPrivateHost("10.0.0.1")).toBe(true);
+    expect(isPrivateHost("172.20.0.1")).toBe(true);
+    expect(isPrivateHost("media.giphy.com")).toBe(false);
+    expect(isPrivateHost("cdn.example.com")).toBe(false);
+  });
+
+  it("imports celebration videos via URL with validation and MP4 check", async () => {
+    const importUrl = "/api/celebrations/nhl/MIN/nhl%3A8483525/import";
+    // Bad params
+    expect((await app.inject({ method: "POST", url: "/api/celebrations/nhl/MIN/bad_id/import", payload: { url: "https://example.com/video.mp4" } })).statusCode).toBe(400);
+    // Missing/invalid URL
+    expect((await app.inject({ method: "POST", url: importUrl, payload: {} })).statusCode).toBe(400);
+    // Private host
+    expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "http://127.0.0.1/video.mp4" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "http://localhost/video.mp4" } })).statusCode).toBe(400);
+
+    // Mock global fetch to return mp4
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const u = String(input);
+        if (u.includes("not-mp4")) {
+          return new Response("not a video", { status: 200, headers: { "content-type": "video/mp4" } });
+        }
+        if (u.includes("not-found")) {
+          return new Response("not found", { status: 404 });
+        }
+        return new Response(mp4, { status: 200, headers: { "content-type": "video/mp4" } });
+      }) as typeof fetch;
+
+      // 404 from upstream
+      expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "https://example.com/not-found.mp4" } })).statusCode).toBe(400);
+      // Not MP4 content
+      expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "https://example.com/not-mp4.mp4" } })).statusCode).toBe(415);
+      // Valid MP4 import
+      const okRes = await app.inject({ method: "POST", url: importUrl, payload: { url: "https://giphy.com/gifs/test-xyz123" } });
+      expect(okRes.statusCode).toBe(200);
+      expect(okRes.json()).toEqual({ ok: true, size: mp4.length });
+
+      // File was saved
+      const video = await app.inject(media);
+      expect(video.statusCode).toBe(200);
+      expect(video.rawPayload).toEqual(mp4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

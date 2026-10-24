@@ -249,4 +249,27 @@ describe("Engine", () => {
       vi.useRealTimers();
     }
   });
+
+  it("announces Montreal Canadiens goals and game events in French by default", async () => {
+    const mtlPlay = play(1, "MTL", "Cole Caufield");
+    const { engine, events, settle } = setup([mtlPlay]);
+    const mtlGame = (o: Partial<Parameters<typeof mk>[0]> = {}) =>
+      mk({
+        home: team("MTL", "Canadiens", o.h ?? 0),
+        away: team("TOR", "Maple Leafs", o.a ?? 0),
+        ...o,
+      });
+    engine.ingestEspn(mtlGame());
+    engine.ingestEspn(mtlGame({ h: 1 }));
+    await settle();
+    engine.ingestEspn(mtlGame({ h: 1, intermission: true }));
+    engine.ingestEspn(mtlGame({ h: 1, status: "post", period: 3 }));
+    await settle();
+    const goal = events.find((e) => e.type === "goal");
+    expect(goal?.natural_text).toBe("But des Canadiens ! Cole Caufield marque. Canadiens 1, Maple Leafs 0.");
+    const periodEnd = events.find((e) => e.type === "period_end");
+    expect(periodEnd?.natural_text).toBe("Fin de la 1ère période. City Canadiens mènent 1 à 0.");
+    const gameEnd = events.find((e) => e.type === "game_end");
+    expect(gameEnd?.natural_text).toBe("Pointage final. City Canadiens l'emportent contre City Maple Leafs, 1 à 0.");
+  });
 });

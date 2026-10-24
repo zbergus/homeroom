@@ -14,6 +14,7 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   const [playerId, setPlayerId] = useState("");
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [file, setFile] = useState<File | null>(null);
+  const [url, setUrl] = useState("");
   const [preview, setPreview] = useState<CelebrationVideo | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -35,19 +36,26 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
 
   const upload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !league || !abbr || !validPlayer) return;
+    const cleanUrl = url.trim();
+    if ((!file && !cleanUrl) || !league || !abbr || !validPlayer) return;
     setErr(""); setNotice("");
-    if (!/\.mp4$/i.test(file.name) || file.size > MAX_VIDEO_BYTES) {
-      setErr("Choose an MP4 file no larger than 50 MiB."); return;
-    }
     setBusy(true);
     try {
-      await api.uploadCelebration(league, abbr, assignment, file);
-      setPreview(null); setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
+      if (cleanUrl) {
+        await api.importCelebration(league, abbr, assignment, cleanUrl);
+        setUrl("");
+      } else if (file) {
+        if (!/\.mp4$/i.test(file.name) || file.size > MAX_VIDEO_BYTES) {
+          setErr("Choose an MP4 file no larger than 50 MiB."); setBusy(false); return;
+        }
+        await api.uploadCelebration(league, abbr, assignment, file);
+        setFile(null);
+        if (fileRef.current) fileRef.current.value = "";
+      }
+      setPreview(null);
       await load();
       setNotice("Video saved. Kiosk displays refresh their library automatically.");
-    } catch (e) { setErr(`Upload failed: ${errMsg(e)}`); }
+    } catch (e) { setErr(`Save failed: ${errMsg(e)}`); }
     finally { setBusy(false); }
   };
 
@@ -85,13 +93,19 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
         </Field>
         <Field label="MP4 file (max 50 MiB)" htmlFor="celebration-file">
           <input id="celebration-file" ref={fileRef} type="file" accept="video/mp4,.mp4" disabled={busy} className={inputCls}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setUrl(""); }} />
         </Field>
+        <div className="sm:col-span-2">
+          <Field label="Or paste Giphy link / video URL" htmlFor="celebration-url">
+            <input id="celebration-url" type="url" disabled={busy} className={inputCls} placeholder="https://giphy.com/gifs/... or direct .mp4 link"
+              value={url} onChange={(e) => { setUrl(e.target.value); if (e.target.value) { setFile(null); if (fileRef.current) fileRef.current.value = ""; } }} />
+          </Field>
+        </div>
         <p id="celebration-player-help" className="text-xs text-slate-400 sm:col-span-2">
-          Choose a known scorer from live game data, or enter <code className="text-slate-300">nhl:</code>, <code className="text-slate-300">espn:</code>, or <code className="text-slate-300">mlb:</code> plus the numeric player ID (not jersey number). Leave blank for the team fallback.
+          Choose a known scorer from live game data, or enter <code className="text-slate-300">nhl:</code>, <code className="text-slate-300">espn:</code>, or <code className="text-slate-300">mlb:</code> plus the numeric player ID (not jersey number). Leave blank for the team fallback. For Giphy, paste any <code className="text-slate-300">giphy.com/gifs/...</code> link.
         </p>
         {!validPlayer && <p role="alert" className="text-sm text-amber-300">Use an id such as nhl:8478402, espn:5080172 or mlb:691406, or leave blank for the team fallback.</p>}
-        <div><Button type="submit" variant="primary" disabled={busy || !file || !league || !abbr || !validPlayer}>{busy ? "Saving…" : "Upload / replace"}</Button></div>
+        <div><Button type="submit" variant="primary" disabled={busy || (!file && !url.trim()) || !league || !abbr || !validPlayer}>{busy ? "Saving…" : url.trim() ? "Import from URL" : "Upload / replace"}</Button></div>
       </form>
       <ul className="mt-5 flex flex-col gap-2">
         {!videos.length && <li className="text-sm text-slate-400">No videos uploaded. The built-in celebration remains active.</li>}

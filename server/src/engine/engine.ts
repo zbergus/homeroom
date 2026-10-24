@@ -378,6 +378,7 @@ export class Engine extends EventEmitter<EngineEvents> {
 
   private buildOverturned(game: Game, team: Team): EventPayload {
     const label = scoringLabel(game.sport, 1);
+    const lang = this.eventLang(game, team);
     return {
       event_id: `evt_${randomUUID()}`,
       type: "goal_overturned",
@@ -388,7 +389,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       game,
       team,
       scoring: { label, assists: [], delta: -1, home_score: game.home.score, away_score: game.away.score },
-      natural_text: `The ${label.toLowerCase()} for ${team.display_name} was overturned. ${game.home.name} ${game.home.score}, ${game.away.name} ${game.away.score}.`,
+      natural_text: naturalText("goal_overturned", { game, team, label }, lang),
     };
   }
 
@@ -459,6 +460,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       game,
       natural_text: "",
     };
+    const lang = this.eventLang(game, o.team);
     if (o.test) payload.test = true;
     if (type === "goal" && o.team) {
       const delta = o.delta ?? 1;
@@ -475,28 +477,44 @@ export class Engine extends EventEmitter<EngineEvents> {
         home_score: game.home.score,
         away_score: game.away.score,
       };
-      payload.natural_text = naturalText("goal", { game, team: o.team, label, scorer: o.play?.scorer });
+      payload.natural_text = naturalText("goal", { game, team: o.team, label, scorer: o.play?.scorer }, lang);
       payload.goal_horn = this.hornUrl(game, o.team);
       if (game.sport === "baseball") payload.baseball = game.baseball_situation;
     } else if (type === "card" && o.incident) {
       payload.team = o.team;
       payload.card = { kind: o.incident.kind, player: o.incident.player, clock: o.incident.clock };
-      payload.natural_text = naturalText("card", { game, team: o.team, card: payload.card });
+      payload.natural_text = naturalText("card", { game, team: o.team, card: payload.card }, lang);
     } else if (type === "powerplay") {
       payload.team = o.team;
-      payload.natural_text = naturalText("powerplay", { game, team: o.team });
+      payload.natural_text = naturalText("powerplay", { game, team: o.team }, lang);
     } else if (type === "first_down" || type === "third_down") {
       payload.team = o.team;
       payload.football = game.football_situation;
-      payload.natural_text = naturalText(type, { game, team: o.team });
+      payload.natural_text = naturalText(type, { game, team: o.team }, lang);
     } else {
-      payload.natural_text = naturalText(type, { game, period: o.period });
+      payload.natural_text = naturalText(type, { game, period: o.period }, lang);
       if (type === "game_end") {
         const { home, away } = game;
         payload.winner = home.score === away.score ? "tie" : home.score > away.score ? home.abbr : away.abbr;
       }
     }
     return payload;
+  }
+
+  eventLang(game: Game, team?: Team): "en" | "fr" {
+    const langs = this.store.getSettings().team_languages ?? {};
+    if (team) {
+      const match = langs[team.abbr] ?? langs[`${game.league}:${team.abbr}`];
+      if (match) return match;
+    }
+    const homeLang = langs[game.home.abbr] ?? langs[`${game.league}:${game.home.abbr}`];
+    if (homeLang) return homeLang;
+    const awayLang = langs[game.away.abbr] ?? langs[`${game.league}:${game.away.abbr}`];
+    if (awayLang) return awayLang;
+    if (team?.abbr === "MTL" || game.home.abbr === "MTL" || game.away.abbr === "MTL") {
+      return "fr";
+    }
+    return "en";
   }
 
   private idsOf(g: Game): Record<string, string> {

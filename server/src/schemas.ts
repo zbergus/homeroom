@@ -76,6 +76,11 @@ export const SettingsPatchSchema = z.object({
   ha: HaSettingsPatch.optional(),
   horn_volume: z.number().min(0, HORN_VOL).max(1, HORN_VOL).nullable().optional(),
   horn_players: z.array(z.string().regex(MEDIA_PLAYER_RE)).max(20, "up to 20 media_player.* entity ids").optional(),
+  team_languages: z.record(z.string().max(20), z.enum(["en", "fr"])).optional(),
+});
+
+export const ImportCelebrationSchema = z.object({
+  url: httpUrl,
 });
 
 export const SyncBodySchema = z.object({
