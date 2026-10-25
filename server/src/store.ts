@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS: Settings = {
   ha: { url: "", token: "", fire_rest_events: false },
   horn_volume: null,
   horn_players: [],
+  team_languages: { MTL: "fr" },
 };
 
 /** one home has one, maybe two, Home Assistant installs */
@@ -79,7 +80,12 @@ export class Store {
   // ---- settings
   getSettings(): Settings {
     const saved = this.kvGet<Partial<Settings>>("settings") ?? {};
-    const s = { ...DEFAULT_SETTINGS, ...saved, ha: { ...DEFAULT_SETTINGS.ha, ...(saved.ha ?? {}) } };
+    const s = {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      team_languages: { ...DEFAULT_SETTINGS.team_languages, ...(saved.team_languages ?? {}) },
+      ha: { ...DEFAULT_SETTINGS.ha, ...(saved.ha ?? {}) },
+    };
     if (!s.public_base_url) s.public_base_url = DEFAULT_SETTINGS.public_base_url;
     return s;
   }

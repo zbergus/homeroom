@@ -64,6 +64,11 @@ export function mockUploadCelebration(league: string, abbr: string, playerId: st
   mem.celebrations.push({ league, abbr, player_id: playerId, url: URL.createObjectURL(file) });
 }
 
+export function mockImportCelebration(league: string, abbr: string, playerId: string, url: string): void {
+  mockDeleteCelebration({ league, abbr, player_id: playerId, url: "" });
+  mem.celebrations.push({ league, abbr, player_id: playerId, url });
+}
+
 export function mockDeleteCelebration(v: CelebrationVideo): void {
   mem.celebrations = mem.celebrations.filter((c) => {
     if (c.league !== v.league || c.abbr !== v.abbr || c.player_id !== v.player_id) return true;

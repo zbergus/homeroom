@@ -247,6 +247,8 @@ export interface Settings {
   horn_volume?: number | null | undefined;
   /** media_player.* entities the horn volume applies to */
   horn_players?: string[] | undefined;
+  /** Language for TTS announcements per team: "MTL": "fr", etc. */
+  team_languages?: Record<string, "en" | "fr"> | undefined;
 }
 
 /** PUT /api/settings body: partial; ha.token only when changed, ha.clear_token removes it. */

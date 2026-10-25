@@ -5,9 +5,41 @@ import { pipeline } from "node:stream/promises";
 import fastifyStatic from "@fastify/static";
 import type { FastifyPluginAsync } from "fastify";
 import { LEAGUES } from "../leagues.js";
-import { CelebrationMediaParamsSchema, CelebrationParamsSchema } from "../schemas.js";
+import { CelebrationMediaParamsSchema, CelebrationParamsSchema, ImportCelebrationSchema } from "../schemas.js";
 
 export const MAX_CELEBRATION_BYTES = 50 * 1024 * 1024;
+
+/** Resolves Giphy page or media URLs to direct MP4 streaming URLs. */
+export function resolveCelebrationUrl(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    // Giphy page link: https://giphy.com/gifs/canadiensmtl-habs-caufield-xyz123 or https://giphy.com/gifs/xyz123
+    const match = u.pathname.match(/^\/gifs\/(?:.*-)?([a-zA-Z0-9]+)$/);
+    if ((u.hostname === "giphy.com" || u.hostname === "www.giphy.com") && match?.[1]) {
+      return `https://media.giphy.com/media/${match[1]}/giphy.mp4`;
+    }
+    // Giphy media link: https://media.giphy.com/media/xyz123/giphy.gif or /giphy.mp4 or i.giphy.com
+    const mediaMatch = u.pathname.match(/^\/media\/([a-zA-Z0-9]+)\//);
+    if ((u.hostname === "media.giphy.com" || u.hostname === "i.giphy.com") && mediaMatch?.[1]) {
+      return `https://media.giphy.com/media/${mediaMatch[1]}/giphy.mp4`;
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+/** Check if host is a local/private IP or loopback to prevent SSRF. */
+export function isPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0") return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  return false;
+}
+
 type Assignment = { league: string; abbr: string; player_id: string };
 const relativeFile = (p: Assignment) => path.join(p.league, p.abbr, `${p.player_id}.mp4`);
 const urlFor = (p: Assignment) => `/media/celebrations/${[p.league, p.abbr, `${p.player_id}.mp4`].map(encodeURIComponent).join("/")}`;
@@ -109,6 +141,80 @@ export const celebrationRoutes: FastifyPluginAsync<{ mediaDir: string }> = async
       await fs.promises.rename(pending, target);
       return { ok: true, size };
     } finally { await fs.promises.rm(pending, { force: true }); }
+  });
+
+  app.post("/api/celebrations/:league/:abbr/:player_id/import", async (req, reply) => {
+    const parsed = CelebrationParamsSchema.safeParse(req.params);
+    if (!parsed.success) return reply.code(400).send({ error: "bad league/abbr/player_id" });
+    const p = parsed.data;
+    if (!await assignmentDir(root, p, true)) return reply.code(400).send({ error: "invalid library directory" });
+
+    const bodyParsed = ImportCelebrationSchema.safeParse(req.body);
+    if (!bodyParsed.success) return reply.code(400).send({ error: "valid url required" });
+
+    let resolvedUrl: string;
+    try {
+      resolvedUrl = resolveCelebrationUrl(bodyParsed.data.url);
+      const parsedUrl = new URL(resolvedUrl);
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        return reply.code(400).send({ error: "URL must be http:// or https://" });
+      }
+      if (isPrivateHost(parsedUrl.hostname)) {
+        return reply.code(400).send({ error: "private or loopback addresses are not permitted" });
+      }
+    } catch {
+      return reply.code(400).send({ error: "invalid URL" });
+    }
+
+    const target = path.join(root, relativeFile(p));
+    const pending = path.join(path.dirname(target), `.${randomUUID()}.upload`);
+    try {
+      const res = await fetch(resolvedUrl, {
+        headers: { "User-Agent": "Homeroom/1.0 (celebration-import)" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        return reply.code(400).send({ error: `failed to fetch video (HTTP ${res.status})` });
+      }
+      const len = res.headers.get("content-length");
+      if (len && parseInt(len, 10) > MAX_CELEBRATION_BYTES) {
+        return reply.code(413).send({ error: "file too large (50 MiB max)" });
+      }
+      if (!res.body) {
+        return reply.code(400).send({ error: "empty response body" });
+      }
+
+      let written = 0;
+      const fileStream = fs.createWriteStream(pending, { flags: "wx", mode: 0o600 });
+      const reader = res.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          written += value.byteLength;
+          if (written > MAX_CELEBRATION_BYTES) {
+            await reader.cancel();
+            return reply.code(413).send({ error: "file too large (50 MiB max)" });
+          }
+          if (!fileStream.write(value)) {
+            await new Promise((resolve) => fileStream.once("drain", resolve));
+          }
+        }
+      } finally {
+        await new Promise((resolve) => fileStream.end(resolve));
+      }
+
+      if (!await isMp4(pending)) {
+        return reply.code(415).send({ error: "not an MP4 file or unsupported video encoding" });
+      }
+
+      await fs.promises.rename(pending, target);
+      return { ok: true, size: written };
+    } catch (e) {
+      return reply.code(502).send({ error: `download failed: ${(e as Error).message}` });
+    } finally {
+      await fs.promises.rm(pending, { force: true });
+    }
   });
 
   app.delete("/api/celebrations/:league/:abbr/:player_id", async (req, reply) => {
