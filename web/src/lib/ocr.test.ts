@@ -67,6 +67,13 @@ describe("parseScoreBug", () => {
     expect(res.clock).toBe("19:40");
   });
 
+  it("parses real Sportsnet TV screen photo with isolated text blocks", () => {
+    const raw = "ot es\n\nSN\n\n9:41\n\ns\n\nSHOTS\n\n1ST\n\nTa\n\n-\n\ncx\n\naa\n\nie\n";
+    const res = parseScoreBug(raw);
+    expect(res.period).toBe(1);
+    expect(res.clock).toBe("9:41");
+  });
+
   it("handles clock with decimal tenths", () => {
     const tenths = `3rd 0:42.5`;
     const res = parseScoreBug(tenths);
