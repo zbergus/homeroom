@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+data/*
+!data/.gitkeep
+media/horns/*/*.mp3
+.playwright-mcp
+*.log
+
+# agent worktrees (a worktree inside the repo carries its own biome.json: remove it before running `npm run lint` in the main checkout)
+.claude/worktrees/
