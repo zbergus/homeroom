@@ -41,25 +41,30 @@ export function parseScoreBug(rawText: string): ParsedScoreBug {
     }
   }
 
+  // Fallback: if colon was recognized as dot in a 20-min period clock (e.g. "9.41")
+  if (!clock) {
+    const dotMatches = [...normalized.matchAll(/\b([0-1]?\d)\.(\d{2})\b/g)];
+    for (const m of dotMatches) {
+      const mins = Number(m[1]);
+      const secs = Number(m[2]);
+      if (secs < 60 && mins <= 20) {
+        clock = `${mins}:${m[2]}`;
+        break;
+      }
+    }
+  }
+
   // 2. Period matching:
-  // Overtime / Prolongation (Period 4)
-  if (/\b(ot|ot1|pr|prol|prolongation)\b/.test(normalized)) {
-    period = 4;
-  }
-  // Period 3: 3rd, 3e, 3eme, 3ere, p3, per 3
-  else if (/\b(3rd|3e|3eme|3ere|p3|per\s*3|period\s*3)\b/.test(normalized)) {
-    period = 3;
-  }
-  // Period 2: 2nd, 2e, 2eme, 2ere, p2, per 2
-  else if (/\b(2nd|2e|2eme|2ere|p2|per\s*2|period\s*2)\b/.test(normalized)) {
-    period = 2;
-  }
-  // Period 1: 1st, 1re, 1ere, 1er, p1, per 1
-  else if (/\b(1st|1re|1ere|1er|p1|per\s*1|period\s*1)\b/.test(normalized)) {
+  // Explicit periods 1st, 2nd, 3rd take precedence over ambiguous 2-letter codes like "ot"
+  if (/\b(1st|1re|1ere|1er|p1|per\s*1|period\s*1)\b/.test(normalized)) {
     period = 1;
-  }
-  // Fallback: look for a standalone digit 1, 2, 3 near period indicators or preceding clock
-  else {
+  } else if (/\b(2nd|2e|2eme|2ere|p2|per\s*2|period\s*2)\b/.test(normalized)) {
+    period = 2;
+  } else if (/\b(3rd|3e|3eme|3ere|p3|per\s*3|period\s*3)\b/.test(normalized)) {
+    period = 3;
+  } else if (/\b(overtime|prol|prolongation|ot1|ot2)\b/.test(normalized) || /\b(OT|PR)\b/.test(rawText)) {
+    period = 4;
+  } else {
     const standalone = /\b(?:period|per|p)?\s*([1-3])\s*(?:st|nd|rd|e|er|eme)?\b/.exec(normalized);
     if (standalone?.[1]) {
       period = Number(standalone[1]);
@@ -132,8 +137,7 @@ export async function scanTvClock(
   snapAnchor: number,
   onProgress?: (progress: number) => void,
 ): Promise<ScanResult> {
-  const { createWorker } = await import("tesseract.js");
-  const canvas = await preprocessImage(file);
+  const { createWorker, PSM } = await import("tesseract.js");
 
   const worker = await createWorker("eng", 1, {
     workerPath: "/ocr/worker.min.js",
@@ -148,12 +152,31 @@ export async function scanTvClock(
   });
 
   try {
+    // PSM.SPARSE_TEXT ('11') is optimal for TV score bugs floating on a broadcast screen
     await worker.setParameters({
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
       tessedit_char_whitelist: "0123456789:.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
     });
 
-    const res = await worker.recognize(canvas);
-    const parsed = parseScoreBug(res.data.text);
+    // Pass 1: Recognize raw photo directly with sparse text mode
+    let res = await worker.recognize(file);
+    let parsed = parseScoreBug(res.data.text);
+
+    // Pass 2: If clock was missed, try contrast-enhanced canvas
+    if (!parsed.clock) {
+      const canvas = await preprocessImage(file);
+      res = await worker.recognize(canvas);
+      parsed = parseScoreBug(res.data.text);
+    }
+
+    // Pass 3: If still missed, try single-block mode on canvas
+    if (!parsed.clock) {
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+      const canvas = await preprocessImage(file);
+      res = await worker.recognize(canvas);
+      parsed = parseScoreBug(res.data.text);
+    }
+
     const elapsedMs = Math.round(performance.now() - snapAnchor);
 
     return {
