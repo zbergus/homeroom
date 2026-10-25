@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+data
+media
+.git
+docs
+ha/custom_components
+.env
