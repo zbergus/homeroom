@@ -1,0 +1,6 @@
+{
+  "_comment": "Fill in URLs/paths you have rights to use. Keys are team abbreviations as shown in the UI. 'default' plays when a team has no horn of its own.",
+  "nhl": { "default": "", "MIN": "", "TOR": "", "MTL": "", "BOS": "" },
+  "iihf": { "default": "", "CAN": "", "USA": "", "SWE": "", "FIN": "" },
+  "ahl": { "default": "", "LAV": "", "HER": "" }
+}
