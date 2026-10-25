@@ -26,6 +26,13 @@ function mock<T>(method: string, path: string, body?: unknown): T {
   if (p === "/api/settings") { if (method === "PUT") mem.settings = { ...mem.settings, ...(body as Partial<Settings>) }; return mem.settings as T; }
   if (p === "/api/devices") return mockDevices as T;
   if (p === "/api/actions") { if (method === "PUT") mem.actions = body as LightAction[]; return mem.actions as T; }
+  if (p.endsWith("/roster")) {
+    return [
+      { id: "nhl:8481559", name: "Cole Caufield", number: "22" },
+      { id: "nhl:8480018", name: "Nick Suzuki", number: "14" },
+      { id: "nhl:8483421", name: "Juraj Slafkovsky", number: "20" },
+    ] as T;
+  }
   if (p.startsWith("/api/teams/")) {
     const l = p.split("/")[3] ?? "";
     const ab: Record<string, string[]> = { nhl: ["MIN", "CBJ", "BOS", "TOR", "EDM", "VAN"], nfl: ["GB", "CHI", "DAL", "PHI"], nba: ["LAL", "BOS", "MIA", "NYK"], mlb: ["NYY", "BOS", "LAD", "SF"], epl: ["ARS", "MCI"] };

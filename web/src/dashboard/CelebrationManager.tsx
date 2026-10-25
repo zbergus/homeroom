@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CelebrationVideo, Game, TeamInfo } from "../types";
+import type { CelebrationVideo, Game, RosterPlayer, TeamInfo } from "../types";
 import { api } from "../lib/api";
 import { knownScorers } from "../lib/celebrations";
 import { errMsg } from "../lib/errors";
@@ -12,7 +12,10 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   const [league, setLeague] = useState("");
   const [abbr, setAbbr] = useState("");
   const [playerId, setPlayerId] = useState("");
+  const [customId, setCustomId] = useState("");
   const [teams, setTeams] = useState<TeamInfo[]>([]);
+  const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
   const [preview, setPreview] = useState<CelebrationVideo | null>(null);
@@ -20,18 +23,76 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
   const load = useCallback(() => api.celebrations().then(setVideos), []);
   useEffect(() => { void load().catch((e) => setErr(errMsg(e))); }, [load]);
   useEffect(() => { if (!league && leagues[0]) setLeague(leagues[0]); }, [league, leagues]);
+
   useEffect(() => {
     setTeams([]);
+    setRoster([]);
     if (!league) return;
     let dead = false;
     api.teams(league).then((t) => { if (!dead) setTeams(t); }).catch((e) => { if (!dead) setErr(errMsg(e)); });
     return () => { dead = true; };
   }, [league]);
-  const players = knownScorers(games.values(), league, abbr);
-  const assignment = playerId.trim() || "default";
+
+  useEffect(() => {
+    setRoster([]);
+    setPlayerId("");
+    setCustomId("");
+    if (!league || !abbr) return;
+    let dead = false;
+    api.roster(league, abbr).then((r) => { if (!dead) setRoster(r); }).catch(() => undefined);
+    return () => { dead = true; };
+  }, [league, abbr]);
+
+  const scorers = knownScorers(games.values(), league, abbr);
+  const players = [...roster];
+  for (const s of scorers) {
+    if (!players.some((p) => p.id === s.id)) {
+      players.push(s);
+    }
+  }
+  players.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Prefetch rosters for teams that already have uploaded celebration videos so their names display
+  useEffect(() => {
+    const teamsToFetch = new Set(videos.map((v) => `${v.league}:${v.abbr}`));
+    for (const key of teamsToFetch) {
+      const [l, a] = key.split(":");
+      if (!l || !a) continue;
+      void api.roster(l, a).then((r) => {
+        const batch: Record<string, string> = {};
+        for (const p of r) {
+          batch[p.id] = p.name + (p.number ? ` #${p.number}` : "");
+        }
+        setPlayerNames((prev) => ({ ...prev, ...batch }));
+      }).catch(() => undefined);
+    }
+  }, [videos]);
+
+  // Keep playerNames updated with live game scorers
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const p of players) {
+      next[p.id] = p.name + (p.number ? ` #${p.number}` : "");
+    }
+    for (const g of games.values()) {
+      for (const goal of g.goals) {
+        if (goal.scorer_id && goal.scorer) {
+          next[goal.scorer_id] = goal.scorer + (goal.scorer_number ? ` #${goal.scorer_number}` : "");
+        }
+      }
+    }
+    if (Object.keys(next).length > 0) {
+      setPlayerNames((prev) => ({ ...prev, ...next }));
+    }
+  }, [players, games]);
+
+  const isCustom = playerId === "custom";
+  const selectedId = isCustom ? customId.trim() : playerId.trim();
+  const assignment = selectedId || "default";
   const validPlayer = assignment === "default" || /^(?:nhl|espn|mlb):\d{1,12}$/.test(assignment);
 
   const upload = async (e: React.FormEvent) => {
@@ -84,13 +145,28 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
             {teams.map((t) => <option key={t.abbr} value={t.abbr}>{t.abbr} {t.name}</option>)}
           </select>
         </Field>
-        <Field label="Player ID (optional)" htmlFor="celebration-player">
-          <input id="celebration-player" className={inputCls} list="celebration-players" value={playerId} disabled={busy} placeholder="Blank = team celebration" aria-describedby="celebration-player-help"
-            onChange={(e) => setPlayerId(e.target.value)} />
-          <datalist id="celebration-players">
-            {players.map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ""}</option>)}
-          </datalist>
+        <Field label="Assignment (Team or Player)" htmlFor="celebration-player">
+          <select id="celebration-player" className={inputCls} value={playerId} disabled={busy || !abbr}
+            onChange={(e) => setPlayerId(e.target.value)}>
+            <option value="">Team celebration (fallback for any scorer)</option>
+            {players.length > 0 && (
+              <optgroup label={`${abbr} Roster & Scorers`}>
+                {players.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.number ? ` #${p.number}` : ""}{p.position ? ` (${p.position})` : ""} · {p.id}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <option value="custom">Other / Custom player ID...</option>
+          </select>
         </Field>
+        {isCustom && (
+          <Field label="Custom Player ID" htmlFor="celebration-custom-player">
+            <input id="celebration-custom-player" className={inputCls} placeholder="e.g. nhl:8478402 or espn:5080172"
+              value={customId} disabled={busy} onChange={(e) => setCustomId(e.target.value)} />
+          </Field>
+        )}
         <Field label="MP4 file (max 50 MiB)" htmlFor="celebration-file">
           <input id="celebration-file" ref={fileRef} type="file" accept="video/mp4,.mp4" disabled={busy} className={inputCls}
             onChange={(e) => { setFile(e.target.files?.[0] ?? null); if (e.target.files?.[0]) setUrl(""); }} />
@@ -102,24 +178,38 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
           </Field>
         </div>
         <p id="celebration-player-help" className="text-xs text-slate-400 sm:col-span-2">
-          Choose a known scorer from live game data, or enter <code className="text-slate-300">nhl:</code>, <code className="text-slate-300">espn:</code>, or <code className="text-slate-300">mlb:</code> plus the numeric player ID (not jersey number). Leave blank for the team fallback. For Giphy, paste any <code className="text-slate-300">giphy.com/gifs/...</code> link.
+          Select a player from the team roster or leave blank for the team fallback. For Giphy, paste any <code className="text-slate-300">giphy.com/gifs/...</code> link.
         </p>
-        {!validPlayer && <p role="alert" className="text-sm text-amber-300">Use an id such as nhl:8478402, espn:5080172 or mlb:691406, or leave blank for the team fallback.</p>}
+        {!validPlayer && <p role="alert" className="text-sm text-amber-300">Use an id such as nhl:8478402, espn:5080172 or mlb:691406, or choose from the roster above.</p>}
         <div><Button type="submit" variant="primary" disabled={busy || (!file && !url.trim()) || !league || !abbr || !validPlayer}>{busy ? "Saving…" : url.trim() ? "Import from URL" : "Upload / replace"}</Button></div>
       </form>
       <ul className="mt-5 flex flex-col gap-2">
         {!videos.length && <li className="text-sm text-slate-400">No videos uploaded. The built-in celebration remains active.</li>}
-        {videos.map((v) => (
-          <li key={`${v.league}/${v.abbr}/${v.player_id}`} className="flex flex-wrap items-center gap-3 rounded-xl bg-ink-900 px-3 py-2">
-            <span className="min-w-0 flex-1 text-sm font-bold">{v.league.toUpperCase()} · {v.abbr} · {v.player_id === "default" ? "Team fallback" : v.player_id}</span>
-            <Button disabled={busy} onClick={() => setPreview(v)}>Preview</Button>
-            <Button disabled={busy} variant="danger" onClick={() => del(v)} aria-label={`Delete ${v.abbr} ${v.player_id} video`}>Delete</Button>
-          </li>
-        ))}
+        {videos.map((v) => {
+          const name = v.player_name ?? playerNames[v.player_id];
+          const displayLabel = v.player_id === "default"
+            ? "Team fallback"
+            : name
+            ? `${name} (${v.player_id})`
+            : v.player_id;
+
+          return (
+            <li key={`${v.league}/${v.abbr}/${v.player_id}`} className="flex flex-wrap items-center gap-3 rounded-xl bg-ink-900 px-3 py-2">
+              <span className="min-w-0 flex-1 text-sm font-bold">
+                {v.league.toUpperCase()} · {v.abbr} · <span className="text-sky-300">{displayLabel}</span>
+              </span>
+              <Button disabled={busy} onClick={() => setPreview(v)}>Preview</Button>
+              <Button disabled={busy} variant="danger" onClick={() => del(v)} aria-label={`Delete ${v.abbr} ${v.player_id} video`}>Delete</Button>
+            </li>
+          );
+        })}
       </ul>
       {preview && (
         <div className="mt-4">
-          <p className="mb-2 text-sm font-semibold">{preview.abbr} · {preview.player_id}</p>
+          <p className="mb-2 text-sm font-semibold">
+            {preview.abbr} · {preview.player_name ?? playerNames[preview.player_id] ?? (preview.player_id === "default" ? "Team fallback" : preview.player_id)}
+            {preview.player_id !== "default" && (preview.player_name || playerNames[preview.player_id]) ? ` (${preview.player_id})` : ""}
+          </p>
           <video key={preview.url} src={preview.url} controls muted playsInline className="max-h-80 w-full rounded-xl bg-black" onError={() => setErr("This video could not be played. Kiosk displays will fall back automatically.")}>
             <track kind="captions" />
           </video>

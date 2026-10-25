@@ -317,4 +317,13 @@ describe("control plane", () => {
     expect(await (await fetch(`${base}/api/games/raw`)).json()).toEqual([]);
     expect(await (await fetch(`${base}/api/games/live`)).json()).toEqual([]);
   });
+
+  it("GET /api/teams/:league/:abbr/roster returns roster players and validates input", async () => {
+    expect((await fetch(`${base}/api/teams/invalid/MTL/roster`)).status).toBe(400);
+    expect((await fetch(`${base}/api/teams/nhl/toolongabbr/roster`)).status).toBe(400);
+    const res = await fetch(`${base}/api/teams/nhl/MTL/roster`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+  });
 });

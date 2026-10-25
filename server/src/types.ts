@@ -220,6 +220,21 @@ export interface EventPayload {
   winner?: string | undefined;
 }
 
+export interface RosterPlayer {
+  id: string;
+  name: string;
+  number?: string | undefined;
+  position?: string | undefined;
+}
+
+export interface CelebrationVideo {
+  league: string;
+  abbr: string;
+  player_id: string;
+  url: string;
+  player_name?: string | undefined;
+}
+
 export interface Settings {
   delay_global_s: number;
   delay_by_game: Record<string, number>;

@@ -15,6 +15,7 @@ import type { HaOutputs } from "./outputs/ha.js";
 import { supportsColor, type LightRules } from "./outputs/lights.js";
 import type { PusherHub } from "./outputs/pusher.js";
 import { HornService, hornWarnings } from "./audio/horns.js";
+import { findRosterPlayerName, getTeamRoster } from "./providers/roster.js";
 import { celebrationRoutes } from "./video/celebrations.js";
 import {
   ABBR_RE, ActionListSchema, CalibrateBodySchema, DevicesSyncSchema, ExecuteBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
@@ -397,6 +398,14 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return clean;
   });
 
+  app.get("/api/teams/:league/:abbr/roster", async (req, reply) => {
+    const { league, abbr } = req.params as { league: string; abbr: string };
+    if (!LEAGUES.some((l) => l.id === league) || !ABBR_RE.test(abbr)) {
+      return reply.code(400).send({ error: "bad league/abbr" });
+    }
+    return getTeamRoster(league, abbr, engine.games.values());
+  });
+
   app.get("/api/devices", async () => store.getDevices().map((d) => ({ ...d, supports_color: supportsColor(d) })));
   app.get("/api/actions", async () => store.getActions());
   app.put("/api/actions", async (req, reply) => {
@@ -464,7 +473,10 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   });
 
   // ================= static: horns + web build =================
-  await app.register(celebrationRoutes, { mediaDir: MEDIA_DIR });
+  await app.register(celebrationRoutes, {
+    mediaDir: MEDIA_DIR,
+    findPlayerName: (league, abbr, playerId) => findRosterPlayerName(league, abbr, playerId, engine.games.values()),
+  });
   warmHorns();
   fs.mkdirSync(path.join(MEDIA_DIR, "horns"), { recursive: true });
   // horns go through the processing layer (trim/fade/normalise, cached); everything else under /media is plain static

@@ -1,4 +1,4 @@
-import type { Calibration, CelebrationVideo, Device, EventRecord, Game, GameLite, Horn, League, LightAction, Settings, SettingsPatch, Status, SyncState, TeamInfo, Trigger } from "../types";
+import type { Calibration, CelebrationVideo, Device, EventRecord, Game, GameLite, Horn, League, LightAction, RosterPlayer, Settings, SettingsPatch, Status, SyncState, TeamInfo, Trigger } from "../types";
 import { isMockUrl } from "./live";
 
 const TOKEN_KEY = "homeroom.admin_token";
@@ -58,6 +58,7 @@ export const api = {
   calibrate: (b: { game_id: string; tv_period: number; tv_clock: string }) => call<Calibration>("POST", "/api/calibrate", b),
   haTest: () => call<{ ok?: boolean | undefined; success?: boolean | undefined; message?: string | undefined; error?: string | undefined }>("POST", "/api/ha/test"),
   teams: async (league: string) => arr<TeamInfo>(await call("GET", `/api/teams/${encodeURIComponent(league)}`), "teams"),
+  roster: async (league: string, abbr: string) => arr<RosterPlayer>(await call("GET", `/api/teams/${encodeURIComponent(league)}/${encodeURIComponent(abbr)}/roster`), "players"),
   devices: async () => arr<Device>(await call("GET", "/api/devices"), "devices"),
   actions: async () => arr<LightAction>(await call("GET", "/api/actions"), "actions"),
   putActions: (a: LightAction[]) => call<unknown>("PUT", "/api/actions", a),

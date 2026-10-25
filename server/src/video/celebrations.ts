@@ -78,14 +78,17 @@ async function isMp4(file: string): Promise<boolean> {
   } finally { await handle.close(); }
 }
 
-export const celebrationRoutes: FastifyPluginAsync<{ mediaDir: string }> = async (app, options) => {
+export const celebrationRoutes: FastifyPluginAsync<{
+  mediaDir: string;
+  findPlayerName?: (league: string, abbr: string, playerId: string) => string | undefined;
+}> = async (app, options) => {
   const root = path.join(options.mediaDir, "celebrations");
   if (!await directory(root, true)) throw new Error("celebrations must be a directory, not a symlink");
   // Scoped decoration avoids depending on whether a web build exists. Explicit routes stay dynamic.
   await app.register(fastifyStatic, { root, serve: false });
 
   app.get("/api/celebrations", async () => {
-    const out: (Assignment & { url: string })[] = [];
+    const out: (Assignment & { url: string; player_name?: string | undefined })[] = [];
     if (!await directory(root)) return out;
     for (const l of LEAGUES) {
       const leagueDir = path.join(root, l.id);
@@ -97,7 +100,8 @@ export const celebrationRoutes: FastifyPluginAsync<{ mediaDir: string }> = async
           if (!f.isFile()) continue;
           const p = CelebrationMediaParamsSchema.safeParse({ league: l.id, abbr: entry.name, file: f.name });
           if (!p.success || p.data.abbr !== entry.name || !await isMp4(path.join(dir, f.name))) continue;
-          out.push({ ...p.data, url: urlFor(p.data) });
+          const name = options.findPlayerName?.(p.data.league, p.data.abbr, p.data.player_id);
+          out.push({ ...p.data, url: urlFor(p.data), ...(name ? { player_name: name } : {}) });
         };
       }
     }

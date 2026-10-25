@@ -204,11 +204,19 @@ export interface SyncState {
 
 export interface TeamInfo { abbr: string; name: string; logo?: string | undefined; options?: TeamOptions | undefined }
 
+export interface RosterPlayer {
+  id: string;
+  name: string;
+  number?: string | undefined;
+  position?: string | undefined;
+}
+
 export interface CelebrationVideo {
   league: string;
   abbr: string;
   player_id: string;
   url: string;
+  player_name?: string | undefined;
 }
 
 export interface HASettings {
