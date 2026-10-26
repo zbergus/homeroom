@@ -24,11 +24,11 @@ export function healthOf(p: Poll<Status>): Health {
 export const HEALTH_CLS: Record<Health, string> = { ok: "bg-emerald-400", warn: "bg-amber-400", err: "bg-red-500", unknown: "bg-slate-500" };
 
 const CHECKLIST = `Post-deploy checklist
-1. Home Assistant connection: Settings > Diagnostics confirms HA link ("events connected", "Direct REST ready") and synced entities.
-2. Configure speakers: Celebrations > Goal Horns & Audio > Speakers & Audio tab: select Media Player(s) for the horn, and TTS speaker & engine.
-3. Test Goal Alert: Celebrations > Goal Horns & Audio (or Games > Stream delay) > Test Goal Alert: lights flash, goal horn plays, then TTS speaks ("Goal, Test Player...").
-4. Test TTS: Celebrations > Goal Horns & Audio (or Games > Stream delay) > Test TTS: speaks period start announcement only (no horn) — confirm toast matches speaker audio.
-5. (Optional) Run scripts/e2e_pysher.py against this server to verify Pusher event delivery.`;
+1. Home Assistant connection: Settings > Home Assistant — verify "Test connection" succeeds and shows synced lights, speakers, and TTS engines.
+2. Configure speakers: Celebrations > Goal Horns & Audio > Speakers & Audio — select your smart speakers for horns and TTS speaker/engine, then save.
+3. Light actions: Celebrations > Triggers & light actions — ensure your target bulbs and celebration effects (Flash / Alternate) are enabled.
+4. Test Goal Alert: Click "Test Goal Alert" (in Celebrations > Speakers & Audio or Games > Stream delay) — lights flash, horn plays, then TTS speaks.
+5. Test TTS: Click "Test TTS" — speaks period start announcement only (no horn) to verify text-to-speech audio on your speaker.`;
 
 function Badge({ ok, children }: { ok: boolean | null; children: React.ReactNode }) {
   const c = ok === null ? "bg-slate-500/20 text-slate-300" : ok ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300";
