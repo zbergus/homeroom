@@ -23,6 +23,9 @@ import {
   type SimStep,
 } from "./simulation.js";
 import { naturalText, scoringLabel } from "./text.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("engine");
 import { MANUAL_SPECS } from "./triggers.js";
 import { errMsg } from "../security.js";
 
@@ -275,6 +278,11 @@ export class Engine extends EventEmitter<EngineEvents> {
     let dets = diffGame(prev, next, league.minDelta);
     if (prev) dets = this.suppressFlaps(prev, next, dets);
     if (prev) this.watchOverturn(prev, next);
+    if (prev && prev.status !== "in" && next.status === "in") {
+      log.info(`game live: ${next.away.abbr} @ ${next.home.abbr} (${next.league.toUpperCase()})`);
+    } else if (prev && prev.status !== "post" && next.status === "post") {
+      log.info(`game final: ${next.away.abbr} ${next.away.score} - ${next.home.abbr} ${next.home.score} (${next.league.toUpperCase()})`);
+    }
     this.games.set(next.id, next);
     this.pushOut({ kind: "game", game: next }, this.delayMs(next.id), next.id);
     if (dets.length && this.isSynced(next.id)) this.enqueue(next, dets);
@@ -372,7 +380,7 @@ export class Engine extends EventEmitter<EngineEvents> {
     const prior = this.chains.get(game.id) ?? Promise.resolve();
     const run = prior
       .then(() => this.buildAndPush(game, dets, detectedAt))
-      .catch((err) => console.error("[engine] event build failed", err));
+      .catch((err) => log.error("event build failed:", err));
     this.chains.set(game.id, run);
   }
 
@@ -737,6 +745,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       this.emit("game", o.game);
     } else {
       this.dropPending(o.payload.event_id);
+      log.info(`releasing event: ${o.payload.type} (${o.payload.game.away.abbr} @ ${o.payload.game.home.abbr})`);
       this.emit("event", o.payload);
     }
   }
@@ -754,11 +763,14 @@ export class Engine extends EventEmitter<EngineEvents> {
     }
     const at = this.buffer.push(o, delayMs, key);
     if (o.kind === "game") o.game.clock_at_ms = (o.game.clock_at_ms ?? at) + at - queuedAt - delayMs;
+    if (o.kind === "event") {
+      log.info(`queued event: ${o.payload.type} for ${o.payload.game.away.abbr} @ ${o.payload.game.home.abbr} (${(delayMs / 1000).toFixed(1)}s delay)`);
+    }
     if (o.kind === "event" && at > this.now()) {
       try {
         this.store.savePending(o.payload.event_id, o.payload.game.id, at, JSON.stringify(o.payload));
       } catch (err) {
-        console.error("[engine] could not persist pending event", errMsg(err));
+        log.error("could not persist pending event:", errMsg(err));
       }
     }
   }
@@ -816,7 +828,7 @@ export class Engine extends EventEmitter<EngineEvents> {
         this.restoredAt.set(g.id, now);
         shown++;
       } catch (err) {
-        console.warn(`[engine] dropping unreadable saved snapshot for ${r.game_id}: ${errMsg(err)}`);
+        log.warn(`dropping unreadable saved snapshot for ${r.game_id}: ${errMsg(err)}`);
         this.store.deleteShown(r.game_id);
       }
     }
@@ -826,7 +838,7 @@ export class Engine extends EventEmitter<EngineEvents> {
       try {
         payload = JSON.parse(r.json) as EventPayload;
       } catch (err) {
-        console.warn(`[engine] unreadable pending event ${r.event_id}: ${errMsg(err)}`);
+        log.warn(`unreadable pending event ${r.event_id}: ${errMsg(err)}`);
       }
       if (!payload || payload.game?.id === SIM_GAME_ID || r.game_id === SIM_GAME_ID || overdue > this.restoreGraceMs) {
         if (payload?.game?.id === SIM_GAME_ID || r.game_id === SIM_GAME_ID) {
@@ -834,7 +846,7 @@ export class Engine extends EventEmitter<EngineEvents> {
           dropped++;
           continue;
         }
-        console.warn(`[engine] dropping stale pending event ${r.event_id} (${payload?.type ?? "?"} ${r.game_id}), ${Math.round(overdue / 1000)}s overdue after restart`);
+        log.warn(`dropping stale pending event ${r.event_id} (${payload?.type ?? "?"} ${r.game_id}), ${Math.round(overdue / 1000)}s overdue after restart`);
         this.dropPending(r.event_id);
         dropped++;
         continue;

@@ -11,6 +11,7 @@ import { PusherHub } from "./outputs/pusher.js";
 import { UiHub } from "./outputs/ui.js";
 import { isCrossSite } from "./security.js";
 import { Store } from "./store.js";
+import { createLogger } from "./logger.js";
 
 interface AppOptions {
   store?: Store | undefined;
@@ -59,7 +60,7 @@ export async function createApp(o: AppOptions): Promise<App> {
   engine.on("refresh", () => ui.snapshot());
   // events that were still inside the delay window when the process last stopped
   const restored = engine.restore();
-  if (restored.requeued || restored.dropped) console.log(`[engine] restored ${restored.requeued} pending event(s), dropped ${restored.dropped} stale`);
+  if (restored.requeued || restored.dropped) createLogger("engine").info(`restored ${restored.requeued} pending event(s), dropped ${restored.dropped} stale`);
 
   const http = await buildHttp({ engine, poller, hub, lights, ha, dispatcher, webDir: o.webDir, horns: o.horns, config, startedAt: Date.now() });
   http.server.on("upgrade", (req, socket, head) => {

@@ -5,6 +5,7 @@ import type { Game } from "../types.js";
 import type { Engine } from "./engine.js";
 import { ProviderHealth } from "./health.js";
 import { errMsg } from "../security.js";
+import { createLogger } from "../logger.js";
 
 const WARM_WINDOW_MS = 10 * 60_000;
 const WARM_INTERVAL_MS = 30_000;
@@ -18,7 +19,7 @@ const INSIGHT_LEAD_MS = 3 * 3600_000;
 const INSIGHT_STALE_MS = 30 * 60_000;
 const INSIGHT_MAX_PER_CYCLE = 12;
 
-const log = (...a: unknown[]) => console.log("[poller]", ...a);
+const log = createLogger("poller");
 
 /**
  * Adaptive polling. Per league: live (every poll_live_s) while a relevant game is in progress,
@@ -80,6 +81,7 @@ export class Poller {
 
   start(): void {
     this.stopped = false;
+    log.info(`started watching leagues: ${this.engine.settings.enabled_leagues.join(", ")}`);
     for (const l of LEAGUES) this.loop(`espn:${l.id}`, () => this.tickEspn(l.id), () => this.espnInterval(l.id));
     this.loop("nhl", () => this.tickNhl(), () => this.nhlInterval());
     this.loop("summary", () => this.tickSummary(), () => SUMMARY_INTERVAL_MS);
@@ -92,6 +94,7 @@ export class Poller {
 
   stop(): void {
     this.stopped = true;
+    log.info("stopped");
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();
     if (this.gcTimer) clearInterval(this.gcTimer);
@@ -99,6 +102,7 @@ export class Poller {
 
   /** wake a league loop now (e.g. after the user syncs a game) */
   poke(): void {
+    log.info("poke: refreshing poller loops");
     this.stop();
     this.start();
   }
@@ -111,7 +115,7 @@ export class Poller {
         this.failures.set(key, 0);
       } catch (err) {
         this.failures.set(key, (this.failures.get(key) ?? 0) + 1);
-        log(key, "failed:", errMsg(err));
+        log.warn(key, "failed:", errMsg(err));
       }
       if (this.stopped) return;
       const base = interval();
@@ -213,7 +217,7 @@ export class Poller {
           feed = { ...n, goals: full.goals.length >= n.goals.length ? withOfficialStrength(full.goals, n.goals) : n.goals, situation: full.situation };
         } catch (err) {
           // the play-by-play feed is the secondary source here: keep the score/now version (health already counted the failure)
-          log("nhl", "play-by-play unavailable, using score/now:", errMsg(err));
+          log.warn("nhl", "play-by-play unavailable, using score/now:", errMsg(err));
         }
       }
       this.engine.ingestNhl(g.id, feed);
@@ -278,7 +282,7 @@ export class Poller {
             games = { at: Date.now(), games: await this.health.track("schedule", () => fetchScoreboard(l, d)) };
             this.scheduleCache.set(key, games);
           } catch (err) {
-            log("schedule", key, errMsg(err));
+            log.warn("schedule", key, errMsg(err));
           }
         }
         for (const g of games?.games ?? []) found.set(g.id, g);
