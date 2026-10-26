@@ -24,10 +24,11 @@ export function healthOf(p: Poll<Status>): Health {
 export const HEALTH_CLS: Record<Health, string> = { ok: "bg-emerald-400", warn: "bg-amber-400", err: "bg-red-500", unknown: "bg-slate-500" };
 
 const CHECKLIST = `Post-deploy checklist
-1. Home Assistant > Settings > Devices > Homeroom: the integration link shows "events connected" in Status & diagnostics.
-2. Celebrations > Test Goal Alert: lights flash, goal horn plays, then TTS (spoken line uses scorer name "Test Player").
-3. Celebrations > Test TTS: speaks only (period start), no horn — confirm the toast "Will say" line matches the HomePod.
-4. Run scripts/e2e_pysher.py against this server: it must pass (goal -> goal_horn, get_state -> execute -> restore).`;
+1. Home Assistant connection: Settings > Diagnostics confirms HA link ("events connected", "Direct REST ready") and synced entities.
+2. Configure speakers: Celebrations > Goal Horns & Audio > Speakers & Audio tab: select Media Player(s) for the horn, and TTS speaker & engine.
+3. Test Goal Alert: Celebrations > Goal Horns & Audio (or Games > Stream delay) > Test Goal Alert: lights flash, goal horn plays, then TTS speaks ("Goal, Test Player...").
+4. Test TTS: Celebrations > Goal Horns & Audio (or Games > Stream delay) > Test TTS: speaks period start announcement only (no horn) — confirm toast matches speaker audio.
+5. (Optional) Run scripts/e2e_pysher.py against this server to verify Pusher event delivery.`;
 
 function Badge({ ok, children }: { ok: boolean | null; children: React.ReactNode }) {
   const c = ok === null ? "bg-slate-500/20 text-slate-300" : ok ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300";

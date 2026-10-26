@@ -8,7 +8,7 @@ Needs a running Homeroom. It links, syncs a fake light, configures a temporary a
 touchdown and asserts: `goal` then `goal_horn` is NOT required (no horn file), `get_state` -> `execute`
 (alternate) -> `restore`, in that order. It overwrites light actions on the target server.
 """
-import argparse, json, logging, sys, time
+import argparse, json, logging, os, sys, time
 from urllib.parse import urlparse
 
 import httpx
@@ -17,10 +17,18 @@ import pysher
 ap = argparse.ArgumentParser()
 ap.add_argument("--base", default="http://127.0.0.1:8080")
 ap.add_argument("--key", default="homeroom-local-key", help="PUSHER_APP_KEY of the server")
+ap.add_argument("--token", default=os.environ.get("ADMIN_TOKEN"), help="ADMIN_TOKEN if required by the server")
 a = ap.parse_args()
 BASE = a.base.rstrip("/")
 u = urlparse(BASE)
 H = {"Authorization": "Bearer e2e-test-key", "Accept": "application/json"}
+admin_h = {"Accept": "application/json"}
+if a.token:
+    admin_h["Authorization"] = f"Bearer {a.token}"
+
+# Backup existing light actions to restore when finished
+existing_resp = httpx.get(BASE + "/api/actions", headers=admin_h)
+existing_actions = existing_resp.json() if existing_resp.status_code == 200 else None
 
 link = httpx.post(BASE + "/integrations/home-assistant/link", data={"home_assistant_id": "e2e", "home_assistant_integration_version": "1.1.1"}, headers=H).json()
 assert link["success"], link
@@ -46,17 +54,21 @@ def reply(d):
 p.connection.bind("pusher:connection_established", on_conn)
 p.connect()
 time.sleep(2)
-httpx.put(BASE + "/api/actions", json=[{"id": "e2e", "enabled": True, "triggers": ["touchdown"], "team_scope": "any", "entities": ["light.e2e"], "effect": "alternate", "duration": 1, "speed": 5, "colors": "team", "restore": True}])
-httpx.post(BASE + "/api/trigger", json={"trigger": "touchdown"})
-time.sleep(3.5)
-names = [n for n, _ in got]
-print(names)
-goal = next(d for n, d in got if n == "goal")
-assert goal["scoring"]["label"] == "TOUCHDOWN" and goal["natural_text"] and "already_triggered_from_score_change" not in goal
-assert names[0] == "goal", names
-assert names.index("get_state") < names.index("execute"), names
-execs = [d for n, d in got if n == "execute"]
-assert execs[0]["action"] == "alternate" and execs[-1]["action"] == "restore", execs
-print("E2E OK")
-p.disconnect()
-httpx.put(BASE + "/api/actions", json=[])
+
+try:
+    httpx.put(BASE + "/api/actions", json=[{"id": "e2e", "enabled": True, "triggers": ["touchdown"], "team_scope": "any", "entities": ["light.e2e"], "effect": "alternate", "duration": 1, "speed": 5, "colors": "team", "restore": True}], headers=admin_h)
+    httpx.post(BASE + "/api/trigger", json={"trigger": "touchdown"}, headers=admin_h)
+    time.sleep(3.5)
+    names = [n for n, _ in got]
+    print(names)
+    goal = next(d for n, d in got if n == "goal")
+    assert goal["scoring"]["label"] == "TOUCHDOWN" and goal["natural_text"] and "already_triggered_from_score_change" not in goal
+    assert names[0] == "goal", names
+    assert names.index("get_state") < names.index("execute"), names
+    execs = [d for n, d in got if n == "execute"]
+    assert execs[0]["action"] == "alternate" and execs[-1]["action"] == "restore", execs
+    print("E2E OK")
+finally:
+    p.disconnect()
+    if isinstance(existing_actions, list):
+        httpx.put(BASE + "/api/actions", json=existing_actions, headers=admin_h)
