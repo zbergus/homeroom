@@ -115,6 +115,8 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
   const [ttsEngine, setTtsEngine] = useState(settings.tts_engine ?? "");
   const [discovered, setDiscovered] = useState<{ media_players: Device[]; tts_engines: Device[] }>({ media_players: [], tts_engines: [] });
   const [volMsg, setVolMsg] = useState<{ k: "ok" | "err"; t: string } | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testMsg, setTestMsg] = useState<{ k: "ok" | "err"; t: string } | null>(null);
 
   useEffect(() => {
     api.entities().then((e) => setDiscovered(e)).catch(() => {});
@@ -130,9 +132,10 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
 
   const saveVolume = async () => {
     setVolMsg(null);
+    setTestMsg(null);
     const list = parsePlayers(playersText);
     const bad = list.filter((e) => !PLAYER_RE.test(e));
-    if (volEnabled && bad.length) {
+    if (bad.length) {
       return setVolMsg({ k: "err", t: `Not a media player entity id: ${bad[0]} (e.g. media_player.living_room)` });
     }
     setBusy(true);
@@ -148,6 +151,34 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
       setVolMsg({ k: "err", t: errMsg(e) });
     } finally {
       setBusy(false);
+    }
+  };
+
+  const testGoal = async () => {
+    setTestBusy(true);
+    setTestMsg(null);
+    try {
+      const r = await api.trigger({ trigger: "goal" });
+      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : " (no spoken line — is TTS enabled?)";
+      setTestMsg({ k: "ok", t: `Test Goal alert fired (lights, horn, TTS).${say}` });
+    } catch (e) {
+      setTestMsg({ k: "err", t: `Test Goal alert failed: ${errMsg(e)}` });
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
+  const testTts = async () => {
+    setTestBusy(true);
+    setTestMsg(null);
+    try {
+      const r = await api.trigger({ trigger: "period_start" });
+      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : " (no spoken line — is TTS enabled?)";
+      setTestMsg({ k: "ok", t: `Test TTS fired (no horn).${say}` });
+    } catch (e) {
+      setTestMsg({ k: "err", t: `Test TTS failed: ${errMsg(e)}` });
+    } finally {
+      setTestBusy(false);
     }
   };
 
@@ -192,7 +223,7 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
   return (
     <Card
       title="Goal Horns & Audio"
-      subtitle="Play real team goal horns on your speakers when a goal is scored."
+      subtitle="Select horn & TTS speakers, adjust volume boost, upload team horns, and set audio trimming limits."
       actions={
         <div className="flex gap-1 rounded-lg bg-ink-900 p-1">
           <button
@@ -211,7 +242,7 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
               subTab === "volume" ? "bg-accent text-white" : "text-slate-400 hover:text-white"
             }`}
           >
-            Speaker Volume
+            Speakers & Audio
           </button>
           <button
             type="button"
@@ -321,42 +352,15 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
         </div>
       )}
 
-      {/* Tab 2: Volume & Speaker entity management */}
+      {/* Tab 2: Speakers & Audio output management */}
       {subTab === "volume" && (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <Switch checked={volEnabled} onChange={setVolEnabled} label="Control horn volume" />
-            <div>
-              <div className="text-sm font-medium">Automatic Horn Volume Boost</div>
-              <div className="text-xs text-slate-400">
-                Temporarily sets speakers to a designated volume during the goal horn, then restores previous volume.
-              </div>
-            </div>
-          </div>
-
-          <div className={`grid gap-4 sm:grid-cols-2 ${volEnabled ? "" : "opacity-50"}`}>
+        <div className="flex flex-col gap-5">
+          {/* Target Speakers & TTS Engines */}
+          <div className="flex flex-col gap-4">
             <Field
-              label={`Horn volume level: ${pct}%`}
-              htmlFor="horn-vol"
-              hint="Applied just before the horn audio starts."
-            >
-              <input
-                id="horn-vol"
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={pct}
-                disabled={!volEnabled}
-                onChange={(e) => setPct(Number(e.target.value))}
-                className="w-full accent-accent"
-              />
-            </Field>
-
-            <Field
-              label="Home Assistant Media Players"
+              label="Horn Speakers (Home Assistant Media Players)"
               htmlFor="horn-players"
-              hint="Speakers that play the goal horn (one media_player.* per line, or click discovered speakers)."
+              hint="Speakers that play the goal horn when your team scores (click discovered speakers below or enter one entity_id per line)."
             >
               {discovered.media_players.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
@@ -371,11 +375,11 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
                           const next = current.includes(mp.entity_id) ? current.filter((x) => x !== mp.entity_id) : [...current, mp.entity_id];
                           setPlayersText(next.join("\n"));
                         }}
-                        className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
+                        className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
                           active ? "bg-accent text-white" : "bg-ink-800 text-slate-300 hover:bg-ink-700"
                         }`}
                       >
-                        {mp.name}
+                        {active ? "✓ " : "+ "}{mp.name}
                       </button>
                     );
                   })}
@@ -392,50 +396,94 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
               />
             </Field>
 
-            <Field label="TTS Speaker" htmlFor="tts-speaker" hint="Speaker for spoken goal announcements.">
-              <select
-                id="tts-speaker"
-                className={inputCls}
-                value={ttsPlayer}
-                onChange={(e) => setTtsPlayer(e.target.value)}
-              >
-                <option value="">Default (First horn speaker)</option>
-                {discovered.media_players.map((mp) => (
-                  <option key={mp.entity_id} value={mp.entity_id}>
-                    {mp.name} ({mp.entity_id})
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="TTS Speaker" htmlFor="tts-speaker" hint="Speaker for spoken goal announcements.">
+                <select
+                  id="tts-speaker"
+                  className={inputCls}
+                  value={ttsPlayer}
+                  onChange={(e) => setTtsPlayer(e.target.value)}
+                >
+                  <option value="">Default (First horn speaker)</option>
+                  {discovered.media_players.map((mp) => (
+                    <option key={mp.entity_id} value={mp.entity_id}>
+                      {mp.name} ({mp.entity_id})
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-            <Field label="TTS Engine" htmlFor="tts-engine" hint="Text-to-speech service in Home Assistant.">
-              <select
-                id="tts-engine"
-                className={inputCls}
-                value={ttsEngine}
-                onChange={(e) => setTtsEngine(e.target.value)}
-              >
-                <option value="">Default (tts.speak)</option>
-                {discovered.tts_engines.map((t) => (
-                  <option key={t.entity_id} value={t.entity_id}>
-                    {t.name} ({t.entity_id})
-                  </option>
-                ))}
-              </select>
-            </Field>
+              <Field label="TTS Engine" htmlFor="tts-engine" hint="Text-to-speech service in Home Assistant.">
+                <select
+                  id="tts-engine"
+                  className={inputCls}
+                  value={ttsEngine}
+                  onChange={(e) => setTtsEngine(e.target.value)}
+                >
+                  <option value="">Default (tts.speak)</option>
+                  {discovered.tts_engines.map((t) => (
+                    <option key={t.entity_id} value={t.entity_id}>
+                      {t.name} ({t.entity_id})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
           </div>
 
-          {volEnabled && !haReady && (
+          {/* Optional Automatic Horn Volume Boost */}
+          <div className="rounded-xl border border-white/10 bg-ink-900/60 p-4">
+            <div className="flex items-center gap-3">
+              <Switch checked={volEnabled} onChange={setVolEnabled} label="Control horn volume" />
+              <div>
+                <div className="text-sm font-medium">Automatic Horn Volume Boost (Optional)</div>
+                <div className="text-xs text-slate-400">
+                  Temporarily raises speakers to a designated volume during the goal horn, then restores previous volume when horn finishes.
+                </div>
+              </div>
+            </div>
+
+            <div className={`mt-3 ${volEnabled ? "" : "opacity-40 pointer-events-none"}`}>
+              <Field
+                label={`Horn volume level: ${pct}%`}
+                htmlFor="horn-vol"
+                hint="Applied just before the horn audio starts."
+              >
+                <input
+                  id="horn-vol"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={pct}
+                  disabled={!volEnabled}
+                  onChange={(e) => setPct(Number(e.target.value))}
+                  className="w-full max-w-sm accent-accent"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {!haReady && (
             <Notice kind="err">
-              Home Assistant URL or token is not saved yet in Settings. Volume control requires HA REST access.
+              Home Assistant URL or token is not saved yet in Settings. Speaker output and volume control require HA REST access.
             </Notice>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={() => void saveVolume()} disabled={busy}>
-              Save Volume Settings
-            </Button>
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="primary" onClick={() => void saveVolume()} disabled={busy}>
+                Save Speaker Settings
+              </Button>
+              <Button onClick={() => void testGoal()} disabled={busy || testBusy}>
+                Test Goal Alert
+              </Button>
+              <Button onClick={() => void testTts()} disabled={busy || testBusy}>
+                Test TTS
+              </Button>
+            </div>
             {volMsg && <Notice kind={volMsg.k}>{volMsg.t}</Notice>}
+            {testMsg && <Notice kind={testMsg.k}>{testMsg.t}</Notice>}
           </div>
         </div>
       )}
