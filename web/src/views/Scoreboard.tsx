@@ -13,11 +13,11 @@ import { rowsFor } from "../components/StatBars";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { OverturnedToast, useOverturned } from "../kiosk/Toast";
 import { FormScreen, PlayersScreen, StatsScreen, SummaryScreen, hasForm, hasPlayers } from "../kiosk/Breaks";
-import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick } from "../kiosk/kioskState";
+import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick, trackFinalSeen } from "../kiosk/kioskState";
 import { powerPlayFor } from "../lib/hockey";
 import PlateView from "./Plate";
 
-export { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick };
+export { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick, trackFinalSeen };
 
 const BREAK_ROTATE_MS = 15_000;
 const U = (n: number) => `calc(var(--u) * ${n})`;
@@ -129,7 +129,15 @@ function Hero({ game, now, scale }: { game: Game; now: number; scale: number }) 
           <div className="flex items-center rounded-full bg-black/55 font-display font-bold uppercase tracking-[.2em]" style={{ gap: U(1.4), padding: `${U(.5)} ${U(2)}`, fontSize: U(1.8) }}>
             {live && <span className="live-dot inline-block rounded-full bg-red-500" style={{ width: U(1.1), height: U(1.1) }} />}
             <span className="opacity-80 font-black">{game.league.toUpperCase()}</span>
-            <span>{pre ? "Starting soon" : game.intermission ? `End ${label}` : label}</span>
+            <span>
+              {pre
+                ? "Starting soon"
+                : game.status === "post"
+                ? statusText(game).toUpperCase()
+                : game.intermission
+                ? `End ${label}`
+                : label}
+            </span>
           </div>
         </div>
         <div className="grid grid-cols-2 items-center" style={{ padding: `0 ${U(1)}` }}>
@@ -143,8 +151,19 @@ function Hero({ game, now, scale }: { game: Game; now: number; scale: number }) 
                 <div className="num font-display font-black leading-none" style={{ fontSize: U(left > 0 ? 9 : 6.5) }}>{left > 0 ? countdown(left) : "ANY MOMENT"}</div>
                 <div className="font-display font-semibold uppercase tracking-[.2em] opacity-75" style={{ fontSize: U(1.6) }}>{w.date} · {w.time}</div>
               </>
+            ) : game.status === "post" ? (
+              <div className="flex flex-col items-center">
+                <div className="font-display font-black leading-none tracking-tight" style={{ fontSize: U(9) }}>FINAL</div>
+                <div className="font-display font-semibold uppercase tracking-[.2em] text-amber-400 opacity-90" style={{ fontSize: U(1.8), marginTop: U(0.4) }}>
+                  {game.period > 3 || (game.period_label ?? "").toLowerCase().includes("ot") || (game.period_label ?? "").toLowerCase().includes("overtime")
+                    ? "OVERTIME"
+                    : (game.period_label ?? "").toLowerCase().includes("so") || (game.period_label ?? "").toLowerCase().includes("shootout") || game.period === 5
+                    ? "SHOOTOUT"
+                    : "REGULATION"}
+                </div>
+              </div>
             ) : (
-              <div className="num font-display font-black leading-none" style={{ fontSize: U(clockText.length > 5 ? 6 : 9) }}>{game.status === "post" ? statusText(game).toUpperCase() : clockText}</div>
+              <div className="num font-display font-black leading-none" style={{ fontSize: U(clockText.length > 5 ? 6 : 9) }}>{clockText}</div>
             )}
           </div>
           <div className="flex w-full items-end justify-between" style={{ minHeight: U(4.6) }}>
@@ -231,7 +250,7 @@ export default function Scoreboard() {
   if (leagueFilter) {
     all = all.filter((g) => g.league.toLowerCase() === leagueFilter.toLowerCase());
   }
-  for (const g of all) if (g.status === "post" && !finalSeen.current.has(g.id)) finalSeen.current.set(g.id, Date.now());
+  trackFinalSeen(all, finalSeen.current, now);
   const game = pick(all, want, sync, finalSeen.current, now);
   const finalExpired = !!game && game.status === "post" && now - (finalSeen.current.get(game.id) ?? now) >= FINAL_MS;
 

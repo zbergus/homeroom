@@ -9,7 +9,7 @@ import { useGameClock } from "../lib/clock";
 import { ConnDot, SimBadge, TeamBadge } from "../components/Kiosk";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { OverturnedToast, useOverturned } from "../kiosk/Toast";
-import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick } from "../kiosk/kioskState";
+import { FINAL_MS, IdleScreen, MAX_FINAL_START_AGE_MS, PRE_WINDOW_MS, pick, trackFinalSeen } from "../kiosk/kioskState";
 
 const U = (n: number) => `calc(var(--u) * ${n})`;
 
@@ -138,7 +138,7 @@ function ClockPodLandscape({
       <div
         className="num font-display font-black leading-none text-white tracking-tight text-center"
         style={{
-          fontSize: U(pre ? (left > 0 ? 8 : 6.5) : clockText.length > 5 ? 7 : 10.5),
+          fontSize: U(pre ? (left > 0 ? 8 : 6.5) : post ? 8.5 : clockText.length > 5 ? 7 : 10.5),
           textShadow: "0 .04em .3em rgba(0,0,0,.6)",
         }}
       >
@@ -147,7 +147,7 @@ function ClockPodLandscape({
             ? countdown(left)
             : "ANY MOMENT"
           : post
-          ? statusText(game).toUpperCase()
+          ? "FINAL"
           : clockText}
       </div>
 
@@ -170,14 +170,14 @@ function ClockPodLandscape({
           </div>
         ) : post ? (
           <div
-            className="font-display font-semibold uppercase tracking-[.18em] opacity-80 text-slate-400"
+            className="font-display font-bold uppercase tracking-[.2em] text-amber-400"
             style={{ fontSize: U(1.6) }}
           >
             {game.period > 3
-              ? game.period_label === "shootout"
-                ? "FINAL / SO"
-                : "FINAL / OT"
-              : "GAME COMPLETE"}
+              ? (game.period_label ?? "").toLowerCase().includes("so") || game.period === 5
+                ? "SHOOTOUT"
+                : "OVERTIME"
+              : "REGULATION"}
           </div>
         ) : game.intermission ? (
           <div
@@ -997,10 +997,15 @@ export function pickTeamGame(
   if (wantGame !== "auto") {
     return teamGames.find((g) => g.id === wantGame) ?? teamGames[0];
   }
-  const rank = (g: Game) =>
-    g.status === "in" ? (g.intermission ? 1 : 0)
-    : g.status === "pre" ? 2
-    : now - (finalSeen.get(g.id) ?? now) < FINAL_MS ? 3 : 9;
+  const rank = (g: Game) => {
+    if (g.status === "in") return g.intermission ? 1 : 0;
+    if (g.status === "pre") return 2;
+    const started = startMs(g);
+    if (started && now - started > MAX_FINAL_START_AGE_MS) return 9;
+    const seenAt = finalSeen.get(g.id);
+    if (seenAt === undefined || now - seenAt >= FINAL_MS) return 9;
+    return 3;
+  };
 
   return [...teamGames].filter((g) => rank(g) < 9).sort((a, b) => rank(a) - rank(b) || startMs(a) - startMs(b))[0];
 }
@@ -1021,7 +1026,7 @@ export default function Plate() {
   const nextMine = useNextMine(sync, want === "auto");
 
   const all = [...games.values()];
-  for (const g of all) if (g.status === "post" && !finalSeen.current.has(g.id)) finalSeen.current.set(g.id, Date.now());
+  trackFinalSeen(all, finalSeen.current, now);
 
   // Single-team mode resolution
   const targetAbbr = isSingleTeamMode

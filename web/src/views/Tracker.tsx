@@ -9,7 +9,7 @@ import { useGameClock } from "../lib/clock";
 import { ConnDot, SimBadge, TeamBadge } from "../components/Kiosk";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { OverturnedToast, useOverturned } from "../kiosk/Toast";
-import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick } from "../kiosk/kioskState";
+import { FINAL_MS, IdleScreen, PRE_WINDOW_MS, pick, trackFinalSeen } from "../kiosk/kioskState";
 import { Headshot, PlayerHalf, panelBg, Watermark } from "../kiosk/Breaks";
 import { api } from "../lib/api";
 import { compareSkaters, powerPlayFor, type SkaterSortField } from "../lib/hockey";
@@ -486,28 +486,28 @@ function HeaderBar({
 
   return (
     <header
-      className="flex items-center justify-between px-[2vmin] py-[1.2vmin] bg-slate-950/80 border-b border-white/10 shrink-0"
+      className="relative flex items-center justify-between px-[2vmin] py-[1.2vmin] bg-slate-950/80 border-b border-white/10 shrink-0"
       style={{ minHeight: U(8.5) }}
     >
       {/* Left: Game Switcher & Team Matchup */}
-      <div className="flex items-center" style={{ gap: U(2.5) }}>
+      <div className="flex items-center" style={{ gap: U(1.5) }}>
         {allGames.length > 1 && (
-          <div className="flex items-center bg-slate-900 rounded-lg p-[0.4vmin] border border-white/15" style={{ gap: U(0.5) }}>
+          <div className="flex items-center bg-slate-900 rounded-lg p-[0.3vmin] border border-white/15" style={{ gap: U(0.4) }}>
             <button
               type="button"
               onClick={onPrevGame}
-              className="p-[0.6vmin] text-slate-400 hover:text-white rounded hover:bg-white/10 transition-colors"
+              className="p-[0.5vmin] text-slate-400 hover:text-white rounded hover:bg-white/10 transition-colors"
               title="Previous Game (Left Arrow / K)"
             >
               ◀
             </button>
-            <span className="font-display font-bold uppercase text-slate-300 px-[0.8vmin]" style={{ fontSize: U(1.4) }}>
+            <span className="font-display font-bold uppercase text-slate-300 px-[0.6vmin]" style={{ fontSize: U(1.3) }}>
               {allGames.findIndex((g) => g.id === game.id) + 1} / {allGames.length}
             </span>
             <button
               type="button"
               onClick={onNextGame}
-              className="p-[0.6vmin] text-slate-400 hover:text-white rounded hover:bg-white/10 transition-colors"
+              className="p-[0.5vmin] text-slate-400 hover:text-white rounded hover:bg-white/10 transition-colors"
               title="Next Game (Right Arrow / J)"
             >
               ▶
@@ -515,52 +515,52 @@ function HeaderBar({
           </div>
         )}
 
-        <div className="flex items-center" style={{ gap: U(1.8) }}>
+        <div className="flex items-center" style={{ gap: U(1.2) }}>
           {/* Away Team */}
-          <div className="flex items-center" style={{ gap: U(1.2) }}>
-            <TeamBadge team={game.away} size={U(5.5)} />
+          <div className="flex items-center" style={{ gap: U(0.8) }}>
+            <TeamBadge team={game.away} size={U(4.6)} />
             <div className="flex flex-col">
-              <div className="flex items-center gap-[0.8vmin]">
-                <span className="font-display font-black text-white uppercase tracking-wide" style={{ fontSize: U(2.4) }}>
+              <div className="flex items-center gap-[0.6vmin]">
+                <span className="font-display font-black text-white uppercase tracking-wide leading-none" style={{ fontSize: U(2.0) }}>
                   {game.away.abbr}
                 </span>
                 {ppAway && (
-                  <span className="rounded-full bg-amber-400 px-[1vmin] py-[0.1vmin] font-display font-black text-black text-xs animate-pulse">
+                  <span className="rounded-full bg-amber-400 px-[0.8vmin] py-[0.1vmin] font-display font-black text-black text-xs animate-pulse">
                     {ppAway}
                   </span>
                 )}
               </div>
-              <span className="font-display font-semibold uppercase text-slate-400" style={{ fontSize: U(1.3) }}>
+              <span className="font-display font-semibold uppercase text-slate-400 leading-none mt-[0.3vmin]" style={{ fontSize: U(1.1) }}>
                 SOG: <strong className="num text-slate-200">{game.sog?.away ?? "-"}</strong>
               </span>
             </div>
-            <span className="num font-display font-black text-white pl-[0.8vmin]" style={{ fontSize: U(4.5) }}>
+            <span className="num font-display font-black text-white pl-[0.6vmin]" style={{ fontSize: U(3.6) }}>
               {pre ? "-" : game.away.score ?? 0}
             </span>
           </div>
 
-          <span className="font-display font-bold text-slate-600 px-[0.8vmin]" style={{ fontSize: U(2.2) }}>
+          <span className="font-display font-bold text-slate-600 px-[0.4vmin]" style={{ fontSize: U(1.8) }}>
             @
           </span>
 
           {/* Home Team */}
-          <div className="flex items-center" style={{ gap: U(1.2) }}>
-            <span className="num font-display font-black text-white pr-[0.8vmin]" style={{ fontSize: U(4.5) }}>
+          <div className="flex items-center" style={{ gap: U(0.8) }}>
+            <span className="num font-display font-black text-white pr-[0.6vmin]" style={{ fontSize: U(3.6) }}>
               {pre ? "-" : game.home.score ?? 0}
             </span>
-            <TeamBadge team={game.home} size={U(5.5)} />
+            <TeamBadge team={game.home} size={U(4.6)} />
             <div className="flex flex-col">
-              <div className="flex items-center gap-[0.8vmin]">
-                <span className="font-display font-black text-white uppercase tracking-wide" style={{ fontSize: U(2.4) }}>
+              <div className="flex items-center gap-[0.6vmin]">
+                <span className="font-display font-black text-white uppercase tracking-wide leading-none" style={{ fontSize: U(2.0) }}>
                   {game.home.abbr}
                 </span>
                 {ppHome && (
-                  <span className="rounded-full bg-amber-400 px-[1vmin] py-[0.1vmin] font-display font-black text-black text-xs animate-pulse">
+                  <span className="rounded-full bg-amber-400 px-[0.8vmin] py-[0.1vmin] font-display font-black text-black text-xs animate-pulse">
                     {ppHome}
                   </span>
                 )}
               </div>
-              <span className="font-display font-semibold uppercase text-slate-400" style={{ fontSize: U(1.3) }}>
+              <span className="font-display font-semibold uppercase text-slate-400 leading-none mt-[0.3vmin]" style={{ fontSize: U(1.1) }}>
                 SOG: <strong className="num text-slate-200">{game.sog?.home ?? "-"}</strong>
               </span>
             </div>
@@ -568,10 +568,10 @@ function HeaderBar({
         </div>
       </div>
 
-      {/* Center: Period & Clock */}
-      <div className="flex flex-col items-center">
+      {/* Center: Period & Clock - Locked Dead Center */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
         <div className="flex items-center gap-[0.8vmin]">
-          {live && <span className="live-dot inline-block rounded-full bg-red-500 w-[1.2vmin] height-[1.2vmin]" />}
+          {live && <span className="live-dot inline-block rounded-full bg-red-500 w-[1.2vmin] h-[1.2vmin]" />}
           <span className="font-display font-black uppercase tracking-wider text-white" style={{ fontSize: U(2.8) }}>
             {pre
               ? "UPCOMING"
@@ -581,7 +581,17 @@ function HeaderBar({
           </span>
         </div>
         <div className="font-display font-bold uppercase tracking-widest text-slate-400" style={{ fontSize: U(1.3) }}>
-          {pre ? "PRE-GAME" : game.intermission ? "INTERMISSION" : shortPeriod(game.period_label || "")}
+          {pre
+            ? "PRE-GAME"
+            : post
+            ? (game.period > 3 || (game.period_label ?? "").toLowerCase().includes("ot") || (game.period_label ?? "").toLowerCase().includes("overtime"))
+              ? "OVERTIME"
+              : (game.period_label ?? "").toLowerCase().includes("so") || (game.period_label ?? "").toLowerCase().includes("shootout") || game.period === 5
+              ? "SHOOTOUT"
+              : "REGULATION"
+            : game.intermission
+            ? "INTERMISSION"
+            : shortPeriod(game.period_label || "")}
         </div>
       </div>
 
@@ -653,7 +663,7 @@ export default function Tracker() {
   const [boxscore, setBoxscore] = useState<HockeyBoxscore | null>(null);
 
   const all = useMemo(() => [...games.values()], [games]);
-  for (const g of all) if (g.status === "post" && !finalSeen.current.has(g.id)) finalSeen.current.set(g.id, Date.now());
+  trackFinalSeen(all, finalSeen.current, now);
 
   // Automatic picked game
   const autoPicked = pick(all, wantParam, sync, finalSeen.current, now);

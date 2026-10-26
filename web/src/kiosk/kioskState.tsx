@@ -4,8 +4,23 @@ import { TeamBadge } from "../components/Kiosk";
 
 export const FINAL_MS = 10 * 60_000;
 export const PRE_WINDOW_MS = 60 * 60_000;
+/** Games that started > 4 hours ago cannot have just gone final within the last 10 minutes */
+export const MAX_FINAL_START_AGE_MS = 4 * 3600_000;
 
 const U = (n: number) => `calc(var(--u) * ${n})`;
+
+export function trackFinalSeen(all: Iterable<Game>, finalSeen: Map<string, number>, now: number): void {
+  for (const g of all) {
+    if (g.status === "post" && !finalSeen.has(g.id)) {
+      const started = startMs(g);
+      if (started && now - started > MAX_FINAL_START_AGE_MS) {
+        finalSeen.set(g.id, 0); // Stale/yesterday's game: mark as expired immediately
+      } else {
+        finalSeen.set(g.id, now);
+      }
+    }
+  }
+}
 
 export function pick(
   games: Game[],
@@ -16,10 +31,15 @@ export function pick(
 ): Game | undefined {
   if (want !== "auto") return games.find((g) => g.id === want);
   const pool = !sync ? [] : games.filter((g) => (sync.effective ?? sync.games).includes(g.id));
-  const rank = (g: Game) =>
-    g.status === "in" ? (g.intermission ? 1 : 0)
-    : g.status === "pre" ? 2
-    : now - (finalSeen.get(g.id) ?? now) < FINAL_MS ? 3 : 9;
+  const rank = (g: Game) => {
+    if (g.status === "in") return g.intermission ? 1 : 0;
+    if (g.status === "pre") return 2;
+    const started = startMs(g);
+    if (started && now - started > MAX_FINAL_START_AGE_MS) return 9;
+    const seenAt = finalSeen.get(g.id);
+    if (seenAt === undefined || now - seenAt >= FINAL_MS) return 9;
+    return 3;
+  };
   return [...pool]
     .filter((g) => rank(g) < 9)
     .sort((a, b) => rank(a) - rank(b) || startMs(a) - startMs(b))[0];

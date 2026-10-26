@@ -350,8 +350,8 @@ function MatchupLandscape({ game, now, scale }: { game: Game; now: number; scale
             </span>
           </div>
 
-          {/* Central Puck Drop Countdown Pill */}
-          <div className="flex flex-col items-center">
+          {/* Central Puck Drop Countdown Pill - Locked Dead Center */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
             <div className="flex items-center" style={{ gap: U(1) }}>
               {live && (
                 <span className="live-dot inline-block rounded-full bg-red-500" style={{ width: U(1.2), height: U(1.2) }} />
@@ -367,7 +367,17 @@ function MatchupLandscape({ game, now, scale }: { game: Game; now: number; scale
                 textShadow: "0 .04em .3em rgba(0,0,0,.7)",
               }}
             >
-              {pre ? (left > 0 ? countdown(left) : "ANY MOMENT") : live ? `${game.clock || "LIVE"} · ${game.period_label}` : "FINAL"}
+              {pre
+                ? left > 0
+                  ? countdown(left)
+                  : "ANY MOMENT"
+                : live
+                ? `${game.clock || "LIVE"} · ${game.period_label}`
+                : game.period > 3 || (game.period_label ?? "").toLowerCase().includes("ot") || (game.period_label ?? "").toLowerCase().includes("overtime")
+                ? "OVERTIME"
+                : (game.period_label ?? "").toLowerCase().includes("so") || (game.period_label ?? "").toLowerCase().includes("shootout") || game.period === 5
+                ? "SHOOTOUT"
+                : "GAME COMPLETE"}
             </div>
           </div>
 
