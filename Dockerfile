@@ -25,8 +25,13 @@ COPY --from=server /srv/dist dist
 COPY --from=server /srv/package.json ./
 COPY --from=web /web/dist web
 RUN mkdir -p /data /media && chown node:node /data /media
+# Compose sets `user: "0:0"` so the entrypoint can take ownership of bind-mounted volumes created by Docker
+# (root:0) and then drop to this user; started unprivileged it just execs the command (docs/DEPLOYMENT.md).
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
