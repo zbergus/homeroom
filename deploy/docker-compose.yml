@@ -23,11 +23,12 @@ services:
       # goal horns: media/horns/<league>/<ABBR>.mp3 (also uploadable in the UI)
       - ${HOMEROOM_MEDIA_DIR:-/mnt/apps/homeroom/media}:/media
     # Docker creates missing bind-mount directories as root:0 while the app runs as uid 1000, so the container
-    # starts as root, and the image's entrypoint chowns the two volumes and immediately drops to uid 1000:
-    # CHOWN is the only capability it ever holds, and the server process itself runs without any
+    # starts as root, and the image's entrypoint chowns the two volumes and immediately drops to uid 1000.
+    # CHOWN is needed to hand the volumes over, SETUID/SETGID to drop to the app user; all three are gone once
+    # the entrypoint has run, and the server process itself runs without any capability
     user: "0:0"
     cap_drop: [ALL]
-    cap_add: [CHOWN]
+    cap_add: [CHOWN, SETUID, SETGID]
     security_opt: ["no-new-privileges:true"]
     read_only: true
     tmpfs: [/tmp]

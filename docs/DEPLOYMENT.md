@@ -32,8 +32,9 @@ The image runs as the `node` user (uid/gid 1000) with a read-only root filesyste
 `/mnt/apps/homeroom/data` and `/mnt/apps/homeroom/media` by default (`HOMEROOM_DATA_DIR` / `HOMEROOM_MEDIA_DIR` change them).
 You don't need to create them: Docker creates missing directories as root, and on every start the image's entrypoint hands
 them to uid 1000 before the server runs. That is the reason the compose file starts the container as root (`user: "0:0"`)
-with `cap_add: [CHOWN]`; the entrypoint drops to uid 1000 straight away, so the server itself runs unprivileged. `data` holds
-the SQLite database and settings; `media` holds the goal horns (`media/horns/<league>/<ABBR>.mp3`, also uploadable in the UI).
+with `cap_add: [CHOWN, SETUID, SETGID]`; the entrypoint drops to uid 1000 straight away, so the server itself runs
+unprivileged. `data` holds the SQLite database and settings; `media` holds the goal horns
+(`media/horns/<league>/<ABBR>.mp3`, also uploadable in the UI).
 
 ### 3. Environment
 
