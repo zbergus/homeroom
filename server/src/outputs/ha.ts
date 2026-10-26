@@ -6,6 +6,21 @@ import { HornVolume, type HornVolumeOpts } from "./horn_volume.js";
 
 const rgb = (c: Rgb) => [c.r, c.g, c.b];
 
+/** Plain service calls answer fast; media ones include the speaker handshake (AirPlay/HomePod ~5 s, Chromecast more). */
+const SERVICE_TIMEOUT_MS = 5000;
+const MEDIA_TIMEOUT_MS = 20_000;
+const TTS_TIMEOUT_MS = 30_000;
+
+/** Body of a failed service call, trimmed: Home Assistant explains most failures in it (bad entity, unreachable player). */
+async function responseDetail(res: Response): Promise<string> {
+  try {
+    const text = (await res.text()).replace(/\s+/g, " ").trim();
+    return text.slice(0, 200) || "(empty body)";
+  } catch {
+    return "(body unreadable)";
+  }
+}
+
 /** Flat body for the direct-REST path (`homeroom_<type>` events on the HA bus). */
 function flatBody(ev: EventPayload, ttsEnabled: boolean): Record<string, unknown> {
   const o = (ev.team ?? ev.game.home).options;
@@ -146,11 +161,16 @@ export class HaOutputs {
     if (!ha.url || !ha.token || horn_players.length === 0) return false;
 
     try {
-      const res = await this.postService("/api/services/media_player/play_media", {
-        entity_id: horn_players,
-        media_content_id: hornUrl,
-        media_content_type: "music",
-      });
+      const res = await this.postService(
+        "/api/services/media_player/play_media",
+        {
+          entity_id: horn_players,
+          media_content_id: hornUrl,
+          media_content_type: "music",
+        },
+        MEDIA_TIMEOUT_MS,
+      );
+      if (!res.ok) console.warn(`[ha] playGoalHorn -> HTTP ${res.status}: ${await responseDetail(res)}`);
       return res.ok;
     } catch (e) {
       console.warn("[ha] playGoalHorn error:", errMsg(e));
@@ -158,7 +178,7 @@ export class HaOutputs {
     }
   }
 
-  /** Speaks the goal announcement on the configured TTS speaker. */
+  /** Speaks an announcement on the configured TTS speaker. */
   async speakAnnouncement(message: string): Promise<boolean> {
     const { ha, tts_player, horn_players, tts_engine } = this.engine.settings;
     if (!ha.url || !ha.token) return false;
@@ -170,10 +190,10 @@ export class HaOutputs {
         media_player_entity_id: targetPlayer,
         message,
       };
-      if (tts_engine) {
-        body.target = { entity_id: tts_engine };
-      }
-      const res = await this.postService("/api/services/tts/speak", body);
+      // The REST API takes the service target as a top-level entity_id; a `target` object is rejected with HTTP 400.
+      if (tts_engine) body.entity_id = tts_engine;
+      const res = await this.postService("/api/services/tts/speak", body, TTS_TIMEOUT_MS);
+      if (!res.ok) console.warn(`[ha] speakAnnouncement -> HTTP ${res.status}: ${await responseDetail(res)}`);
       return res.ok;
     } catch (e) {
       console.warn("[ha] speakAnnouncement error:", errMsg(e));
@@ -184,7 +204,13 @@ export class HaOutputs {
   /** Orchestrates horn playback, volume boost, waiting exact horn duration, and TTS announcement. */
   async orchestrateGoalAudio(ev: EventPayload): Promise<void> {
     const s = this.engine.settings;
-    if (ev.type !== "goal" || !ev.goal_horn || s.horn_players.length === 0 || !s.ha.url || !s.ha.token) return;
+    if (ev.type !== "goal") return;
+    if (!ev.goal_horn || s.horn_players.length === 0) {
+      // no horn to wait for (no file for this team, or no players): the announcement still goes out right away
+      if (s.tts_enabled && ev.natural_text) await this.speakAnnouncement(ev.natural_text);
+      return;
+    }
+    if (!s.ha.url || !s.ha.token) return;
 
     // 1. Boost volume first (with preparation budget)
     await this.hornVolume.prepare(ev.event_id);
@@ -240,14 +266,14 @@ export class HaOutputs {
     }
   }
 
-  private async postService(path: string, body: unknown): Promise<Response> {
+  private async postService(path: string, body: unknown, timeoutMs = SERVICE_TIMEOUT_MS): Promise<Response> {
     const { ha } = this.engine.settings;
     return this.f(`${ha.url.replace(/\/$/, "")}${path}`, {
       method: "POST",
       headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
       body: JSON.stringify(body),
       redirect: "error",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   }
 

@@ -168,7 +168,8 @@ describe("wired into the goal path", () => {
     (app.ha as { hornVolume: HornVolume }).hornVolume = new HornVolume(() => app.engine.settings, fast);
 
     await app.ha.orchestrateGoalAudio(goal(undefined));
-    expect(ha.calls).toEqual([]); // no horn file => no volume change or playback
+    // no horn file => no volume change or playback, but the goal announcement still goes out
+    expect(ha.calls.map((c) => c.url)).toEqual(["/api/services/tts/speak"]);
 
     const order: string[] = [];
     const origPost = (app.ha as unknown as { postService: (p: string, b: unknown) => Promise<Response> }).postService.bind(app.ha);

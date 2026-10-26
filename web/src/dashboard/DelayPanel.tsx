@@ -31,9 +31,10 @@ export default function DelayPanel({ settings, update, games, sync, leagues, liv
   const testTts = async () => {
     setBusy(true); setMsg(null);
     try {
-      const r = await api.trigger({ trigger: "period_start" });
-      const say = r.event?.natural_text ? ` Will say: “${r.event.natural_text}”` : " (no spoken line — is TTS enabled?)";
-      setMsg({ k: "ok", t: `Test TTS fired (no horn).${say}` });
+      const r = await api.testTts();
+      setMsg(r.ok
+        ? { k: "ok", t: `Test TTS sent to ${r.player ?? "the TTS speaker"}${r.message ? `: “${r.message}”` : ""}.` }
+        : { k: "err", t: "Home Assistant refused the TTS call — the Homeroom log shows the HTTP status and Home Assistant's reason." });
     } catch (e) { setMsg({ k: "err", t: `Test TTS failed: ${errMsg(e)}` }); }
     finally { setBusy(false); }
   };

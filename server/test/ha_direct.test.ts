@@ -114,6 +114,51 @@ function mockHomeAssistant(token: string) {
   };
 }
 
+function goalEvent(patch: Partial<EventPayload> = {}): EventPayload {
+  const team: Team = {
+    id: "MTL",
+    logo: "",
+    name: "Montreal Canadiens",
+    display_name: "Canadiens",
+    abbr: "MTL",
+    score: 1,
+    options: {
+      primary_color_rgb: { r: 175, g: 30, b: 45 },
+      secondary_color_rgb: { r: 25, g: 55, b: 109 },
+      alternate_color_rgb: { r: 255, g: 255, b: 255 },
+    },
+  };
+  return {
+    event_id: "ev-1",
+    emitted_at: Date.now(),
+    sport: "hockey",
+    type: "goal",
+    trigger: "goal",
+    league: "nhl",
+    game: {
+      id: "nhl:123",
+      sport: "hockey",
+      league: "nhl",
+      home: team,
+      away: { ...team, id: "TOR", abbr: "TOR" },
+      status: "in",
+      clock: "10:00",
+      period: 1,
+      period_label: "1st",
+      intermission: false,
+      linescores: { home: [], away: [] },
+      stats: { home: {}, away: {} },
+      goals: [],
+      start_time: new Date().toISOString(),
+    },
+    team,
+    delay_s: 0,
+    natural_text: "Goal Canadiens!",
+    goal_horn: "http://example.com/mtl.mp3",
+    ...patch,
+  };
+}
+
 describe("Direct Home Assistant REST integration", () => {
   const token = "secret-token-123";
   let haMock: ReturnType<typeof mockHomeAssistant>;
@@ -184,11 +229,28 @@ describe("Direct Home Assistant REST integration", () => {
     expect(ok).toBe(true);
     const speakCall = haMock.calls.find((c) => c.url === "/api/services/tts/speak");
     expect(speakCall).toBeDefined();
+    // the REST API only accepts the service target as a top-level entity_id (a `target` object is a 400)
     expect(speakCall?.body).toEqual({
+      entity_id: "tts.piper",
       media_player_entity_id: "media_player.mancave_speaker",
       message: "Goal Montreal!",
-      target: { entity_id: "tts.piper" },
     });
+  });
+
+  it("speaks a goal announcement even when no horn is available", async () => {
+    store.patchSettings({ horn_players: [], tts_player: "media_player.mancave_speaker", tts_engine: "tts.piper" });
+    await haOutputs.orchestrateGoalAudio(goalEvent({ goal_horn: undefined }));
+    const speakCall = haMock.calls.find((c) => c.url === "/api/services/tts/speak");
+    expect(speakCall?.body).toEqual({
+      entity_id: "tts.piper",
+      media_player_entity_id: "media_player.mancave_speaker",
+      message: "Goal Canadiens!",
+    });
+  });
+
+  it("does not speak for a non-goal event", async () => {
+    await haOutputs.orchestrateGoalAudio({ ...goalEvent(), type: "period_start", trigger: "period_start" });
+    expect(haMock.calls.some((c) => c.url === "/api/services/tts/speak")).toBe(false);
   });
 
   it("executes light actions and restores original state directly via REST", async () => {

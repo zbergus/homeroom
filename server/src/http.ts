@@ -293,6 +293,17 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return { ok: true, event: fire({ trigger: "goal", league: b.league, team_abbr: b.team_abbr, apply_delay: b.bypass_delay === false }) };
   });
 
+  // "Test TTS" button: speaks one fixed line on the configured TTS speaker, without the horn, lights or an event.
+  app.post("/api/test/tts", async () => {
+    const s = engine.settings;
+    if (!s.ha.url || !s.ha.token) throw Object.assign(new Error("Set the Home Assistant URL and a long-lived token first"), { statusCode: 400 });
+    const player = s.tts_player || s.horn_players[0];
+    if (!player) throw Object.assign(new Error("Set a TTS speaker (or a horn player) first"), { statusCode: 400 });
+    const message = "Homeroom audio test. Goal, Montreal Canadiens!";
+    const ok = await ha.speakAnnouncement(message);
+    return { ok, message, player };
+  });
+
   app.get("/api/simulation", async () => engine.simulationStatus());
 
   app.post("/api/simulation/start", async (_req, reply) => {

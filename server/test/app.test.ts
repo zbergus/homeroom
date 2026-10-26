@@ -128,6 +128,10 @@ describe("control plane", () => {
       expect((await call(path, method, body, { authorization: "Bearer nope" })).status, `${method} ${path} wrong token`).toBe(401);
       expect((await call(path, method, body, bearer)).status, `${method} ${path} with token`).toBeLessThan(400);
     }
+    // the TTS test answers 400 until Home Assistant and a speaker are configured, so it only gets the token checks
+    expect((await call("/api/test/tts", "POST", {})).status).toBe(401);
+    expect((await call("/api/test/tts", "POST", {}, { authorization: "Bearer nope" })).status).toBe(401);
+    expect((await call("/api/test/tts", "POST", {}, bearer)).status).toBe(400);
     expect(app.engine.settings.delay_global_s).toBe(5);
   });
 
