@@ -45,6 +45,13 @@ When a goal is detected:
 4. Once the horn finishes, volume restores and the bilingual TTS announcement speaks (e.g., *"Goal, Montreal Canadiens! Cole Caufield scores. Canadiens 3, Maple Leafs 2."*).
 5. Lights restore to their original state.
 
+### When nothing comes out of the speaker
+- **Test Goal Alert** plays horn and announcement; **Test TTS** speaks one fixed line only. Both answer in the dashboard, and every failed Home Assistant call is logged by Homeroom as `[ha] speakAnnouncement <engine> -> <speaker>: HTTP ...` with Home Assistant's own reason (`docker logs homeroom` / the Arcane log view).
+- **HomePod / AirPlay speakers** (Apple TV integration, `pyatv`): the speaker downloads the clip and gives up after 10 s, so Homeroom pre-synthesizes the line through `/api/tts_get_url` before speaking. A slow TTS engine (generative ones can take 5-20 s) still works, it just starts later.
+- **No TTS engine configured**: `tts.speak` without an entity is a bare HTTP 400. Homeroom falls back to the first `tts.*` entity Home Assistant reported, so run **Sync devices** once after adding an engine.
+- **Chromecast / Google Cast groups**: a group only plays while its members are on; `quick_play` fails silently otherwise. Point the TTS speaker at a real speaker, or at the group once its members are up.
+- A 500 with *"Failed to stream media to the Apple TV"* usually means Home Assistant could not download the audio: check that the speaker and Home Assistant agree on the URL (Home Assistant's **internal URL** must be an address the speaker can reach, e.g. `http://192.168.1.10:8123`).
+
 ---
 
 ## 4. Optional: Custom Home Assistant Automations (Event Bus)
