@@ -98,6 +98,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   const { engine, poller, hub, lights, ha, dispatcher } = d;
   const store = engine.store;
   const horns = d.horns ?? new HornService({ mediaDir: MEDIA_DIR, cacheDir: path.join(DATA_DIR, "cache", "horns"), settings: () => engine.settings });
+  ha.setHorns(horns);
   // pre-build processed horns in the background (production wiring only; tests inject their own service)
   const warmHorns = () => { if (!d.horns) void horns.warm(hornFileList()).catch((e) => console.warn("[horns] warm-up failed:", errMsg(e))); };
   const config = d.config ?? loadConfig();
@@ -402,10 +403,15 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const durations = hornFileList().map((h) => horns.durationOf(h.file)).filter((x): x is number => x !== undefined);
     const restOn = s.ha.fire_rest_events && !!s.ha.url && !!s.ha.token;
     const pusherOn = links.some((l) => l.events_connected);
+    const haConfigured = !!s.ha.url && !!s.ha.token;
     const warnings: string[] = [];
-    if (!links.length) warnings.push("No Home Assistant integration has linked yet. Install the patched integration (see README) and add it in Home Assistant.");
-    else if (!pusherOn) warnings.push("A Home Assistant integration is linked but not connected right now. Check that Home Assistant can reach this server.");
-    if (pusherOn && restOn) warnings.push("The HA integration and REST events are both active: any automation fed by both will fire twice (lights flash twice, horn plays twice).");
+    if (!haConfigured && !links.length) {
+      warnings.push("Home Assistant is not connected. Enter your Home Assistant URL and long-lived access token in Settings.");
+    } else if (haConfigured && devices.length === 0) {
+      warnings.push("Home Assistant is connected, but no devices have been synced yet. Click 'Sync devices' in Settings → Home Assistant.");
+    } else if (!haConfigured && links.length && !pusherOn) {
+      warnings.push("A Home Assistant integration is linked but not connected right now. Check that Home Assistant can reach this server.");
+    }
     if (!s.public_base_url) warnings.push("PUBLIC_BASE_URL is not set, so goal horns cannot be sent.");
     else if (/^https?:\/\/(127\.|localhost|0\.0\.0\.0)/.test(s.public_base_url)) warnings.push("PUBLIC_BASE_URL points at localhost; your speakers cannot reach that. Use this machine's LAN address.");
     if (horn.ok === false) warnings.push(`Horn URL check failed: ${horn.detail}`);
@@ -471,7 +477,14 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return getTeamRoster(league, abbr, engine.games.values());
   });
 
-  app.get("/api/devices", async () => store.getDevices().map((d) => ({ ...d, supports_color: supportsColor(d) })));
+  app.get("/api/devices", async (req) => {
+    const cls = (req.query as { class?: string | undefined })?.class;
+    let list = store.getDevices();
+    if (cls) list = list.filter((d) => d.device_class === cls);
+    else list = list.filter((d) => !d.device_class || d.device_class === "light");
+    return list.map((d) => ({ ...d, supports_color: supportsColor(d) }));
+  });
+
   app.get("/api/actions", async () => store.getActions());
   app.put("/api/actions", async (req, reply) => {
     const parsed = ActionListSchema.safeParse(req.body);
@@ -488,6 +501,16 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return out;
   });
 
+  app.get("/api/entities", async () => {
+    const all = store.getDevices();
+    return {
+      lights: all.filter((d) => d.device_class === "light").map((d) => ({ ...d, supports_color: supportsColor(d) })),
+      media_players: all.filter((d) => d.device_class === "media_player"),
+      tts_engines: all.filter((d) => d.device_class === "tts"),
+    };
+  });
+
+  app.post("/api/ha/sync", async () => ha.syncEntities());
   app.post("/api/ha/test", async () => ha.test());
 
   // ---- horns ----

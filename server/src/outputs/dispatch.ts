@@ -102,6 +102,9 @@ export class Dispatcher {
       const { ha } = this.engine.settings;
       rec.sent.rest = ha.fire_rest_events && !!ha.url && !!ha.token;
       void this.ha.publishRest(ev).catch((err) => log.error("[ha] rest failed:", errMsg(err)));
+      if (typeof this.ha.orchestrateGoalAudio === "function") {
+        void this.ha.orchestrateGoalAudio(ev).catch((err) => log.error("[ha] goal audio failed:", errMsg(err)));
+      }
       rec.sent.lights = this.lights.handle(ev);
       log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) delivered (pusher: ${rec.sent.pusher_clients}, lights: ${rec.sent.lights}, rest: ${rec.sent.rest})`);
     }

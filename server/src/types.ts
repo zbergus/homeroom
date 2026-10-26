@@ -298,6 +298,10 @@ export interface Settings {
   horn_volume: number | null;
   /** media_player.* entities whose volume is set for the horn (needs ha.url + token) */
   horn_players: string[];
+  /** target media_player.* entity for TTS announcements (defaults to horn_players[0] if null/empty) */
+  tts_player?: string | null | undefined;
+  /** target tts.* entity or service (e.g. tts.piper, tts.cloud, defaults to tts.speak if null/empty) */
+  tts_engine?: string | null | undefined;
   /** Language for TTS announcements per team (e.g. MTL: "fr", or "nhl:MTL": "fr"). Defaults to MTL: fr. */
   team_languages: Record<string, "en" | "fr">;
 }

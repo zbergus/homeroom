@@ -49,7 +49,7 @@ export default function ManualTriggers({ triggers, triggersErr, leagues, hasToke
 
   const groups = groupTriggers(triggers);
   return (
-    <Card title="Manual buttons" subtitle="Fire an event yourself (immediately unless you tick delay). Toast shows the TTS line. Only Goal plays a horn; cards and power plays speak when the HA integration supports them.">
+    <Card title="Manual buttons" subtitle="Fire an event yourself (immediately unless you tick delay). Toast shows the TTS line. Only Goal plays a horn.">
       {triggersErr && <Notice kind="err">Could not load triggers: {triggersErr}</Notice>}
       <div className="mb-4 grid gap-3 sm:grid-cols-3 sm:items-end">
         <Field label="League (optional)" htmlFor="mt-league">

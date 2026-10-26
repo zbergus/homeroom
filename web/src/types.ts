@@ -304,6 +304,10 @@ export interface Settings {
   horn_volume?: number | null | undefined;
   /** media_player.* entities the horn volume applies to */
   horn_players?: string[] | undefined;
+  /** target media_player.* entity for TTS announcements */
+  tts_player?: string | null | undefined;
+  /** target tts.* entity or service (e.g. tts.piper) */
+  tts_engine?: string | null | undefined;
   /** Language for TTS announcements per team: "MTL": "fr", etc. */
   team_languages?: Record<string, "en" | "fr"> | undefined;
 }

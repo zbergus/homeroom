@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Engine } from "../engine/engine.js";
 import { matchesAny } from "../engine/triggers.js";
+import { errMsg } from "../security.js";
 import type { EventPayload, LightAction, Rgb } from "../types.js";
 import type { PusherHub } from "./pusher.js";
 
@@ -28,18 +29,26 @@ export function supportsColor(dev: Record<string, unknown>): boolean {
 }
 const near = (a: Rgb, b: Rgb) => Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b) < 60;
 
+export interface LightRulesOpts {
+  fetchImpl?: typeof fetch | undefined;
+}
+
 /**
  * Light automation engine: decides which synced HA entities to flash /
- * alternate / recolour for an event, and restores them afterwards. The HA integration executes the
- * commands we publish on `private-home-assistant.<integration_key>`.
+ * alternate / recolour for an event, and restores them afterwards.
+ * Directly commands Home Assistant via REST, or via Pusher when a bridge is connected.
  */
 export class LightRules {
   private pending = new Map<string, (a: Attrs) => void>();
+  private f: typeof fetch;
 
   constructor(
     private engine: Engine,
     private hub: PusherHub,
-  ) {}
+    opts: LightRulesOpts = {},
+  ) {
+    this.f = opts.fetchImpl ?? fetch;
+  }
 
   /** Called from POST /requests/execute (the integration's reply to get_state). */
   receiveState(requestId: string, attrs: Attrs): boolean {
@@ -88,33 +97,117 @@ export class LightRules {
     return out;
   }
 
+  private async callHaService(service: string, body: Record<string, unknown>): Promise<void> {
+    const { ha } = this.engine.settings;
+    if (!ha.url || !ha.token) return;
+    try {
+      await this.f(`${ha.url.replace(/\/$/, "")}/api/services/${service}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        redirect: "error",
+        signal: AbortSignal.timeout(4000),
+      });
+    } catch (e) {
+      console.warn(`[lights] service ${service} failed:`, errMsg(e));
+    }
+  }
+
+  private async getStateRest(entity: string): Promise<Attrs | undefined> {
+    const { ha } = this.engine.settings;
+    if (!ha.url || !ha.token) return undefined;
+    try {
+      const res = await this.f(`${ha.url.replace(/\/$/, "")}/api/states/${encodeURIComponent(entity)}`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
+        redirect: "error",
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return undefined;
+      return (await res.json()) as Attrs;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async run(a: LightAction, ev: EventPayload, entity: string, integrationKey: string, canColor: boolean, dev: Record<string, unknown>): Promise<void> {
+    const { ha } = this.engine.settings;
     const channel = `private-home-assistant.${integrationKey}`;
-    if (this.hub.subscribers(channel) === 0) return;
-    const send = (data: Record<string, unknown>) => this.hub.broadcast(channel, `execute.${entity}`, data);
+    const usePusher = this.hub.subscribers(channel) > 0;
+    const useRest = !usePusher && !!ha.url && !!ha.token;
+    if (!usePusher && !useRest) return;
 
     let before: Attrs | undefined;
-    if (a.restore) before = await this.getState(channel, entity);
+    if (a.restore) {
+      before = usePusher ? await this.getState(channel, entity) : await this.getStateRest(entity);
+    }
 
     const colors = this.colorsFor(a, ev);
     const first = colors[0];
     if (!first) return; // no colour to show
-    // a white-only bulb (or a plug) cannot alternate colours or take one: the nearest honest effect is a blink
+
     const effects = effectList(dev);
     const wanted = a.effect === "light_effect" && a.light_effect && effects.includes(a.light_effect) ? a.light_effect : undefined;
-    // a built-in effect the light does not advertise, or colour effects on a white-only bulb, degrade to a blink
     const effect = a.effect === "light_effect" ? (wanted ? "light_effect" : "flash") : !canColor && a.effect !== "flash" ? "flash" : a.effect;
-    if (effect === "light_effect") send({ action: "set_effect", effect: wanted });
-    else if (effect === "flash") send({ action: "flash", duration: a.duration, speed: a.speed });
-    else if (effect === "alternate") send({ action: "alternate", duration: a.duration, speed: a.speed, colors: colors.length > 1 ? colors : [first, null] });
-    else send({ action: "set_color", rgb_color: arr(first) });
 
-    if (a.restore && before && effect !== "flash") {
-      // flash restores itself on the HA side; alternate / set_color do not
-      const wait = effect === "alternate" ? a.duration * 1000 + RESTORE_MARGIN_MS : a.duration * 1000;
-      // restoring colour/brightness does not stop a running built-in effect: name the light's own "off" effect when it has one
-      const off = effect === "light_effect" && !before.effect ? effects.find((e) => OFF_EFFECT.test(e)) : undefined;
-      setTimeout(() => send({ action: "restore", state: off ? { ...before, effect: off } : before }), wait).unref();
+    if (usePusher) {
+      const send = (data: Record<string, unknown>) => this.hub.broadcast(channel, `execute.${entity}`, data);
+      if (effect === "light_effect") send({ action: "set_effect", effect: wanted });
+      else if (effect === "flash") send({ action: "flash", duration: a.duration, speed: a.speed });
+      else if (effect === "alternate") send({ action: "alternate", duration: a.duration, speed: a.speed, colors: colors.length > 1 ? colors : [first, null] });
+      else send({ action: "set_color", rgb_color: arr(first) });
+
+      if (a.restore && before && effect !== "flash") {
+        const wait = effect === "alternate" ? a.duration * 1000 + RESTORE_MARGIN_MS : a.duration * 1000;
+        const off = effect === "light_effect" && !before.effect ? effects.find((e) => OFF_EFFECT.test(e)) : undefined;
+        setTimeout(() => send({ action: "restore", state: off ? { ...before, effect: off } : before }), wait).unref();
+      }
+      return;
+    }
+
+    // Direct REST path
+    if (effect === "set_color") {
+      await this.callHaService("light/turn_on", { entity_id: entity, rgb_color: arr(first) });
+    } else if (effect === "light_effect") {
+      await this.callHaService("light/turn_on", { entity_id: entity, effect: wanted });
+    } else if (effect === "flash") {
+      const body: Record<string, unknown> = { entity_id: entity, flash: a.speed > 5 ? "short" : "long" };
+      if (canColor) body.rgb_color = arr(first);
+      await this.callHaService("light/turn_on", body);
+    } else if (effect === "alternate") {
+      const c1 = first;
+      const c2 = colors.length > 1 ? colors[1]! : { r: 255, g: 255, b: 255 };
+      await this.callHaService("light/turn_on", { entity_id: entity, rgb_color: arr(c1) });
+      const stepMs = Math.max(300, Math.round(1000 / Math.max(1, a.speed)));
+      const totalSteps = Math.max(1, Math.round((a.duration * 1000) / stepMs));
+      let step = 0;
+      const timer = setInterval(() => {
+        step++;
+        if (step >= totalSteps) {
+          clearInterval(timer);
+          return;
+        }
+        const col = step % 2 === 0 ? c1 : c2;
+        void this.callHaService("light/turn_on", { entity_id: entity, rgb_color: arr(col) });
+      }, stepMs);
+    }
+
+    if (a.restore && before) {
+      const wait = a.duration * 1000 + RESTORE_MARGIN_MS;
+      setTimeout(async () => {
+        const bState = before?.state;
+        if (bState === "off") {
+          await this.callHaService("light/turn_off", { entity_id: entity });
+        } else {
+          const attrs = (before?.attributes ?? {}) as Record<string, unknown>;
+          const body: Record<string, unknown> = { entity_id: entity };
+          if (Array.isArray(attrs.rgb_color)) body.rgb_color = attrs.rgb_color;
+          if (typeof attrs.brightness === "number") body.brightness = attrs.brightness;
+          if (typeof attrs.color_temp === "number") body.color_temp = attrs.color_temp;
+          if (typeof attrs.effect === "string" && attrs.effect !== "none") body.effect = attrs.effect;
+          await this.callHaService("light/turn_on", body);
+        }
+      }, wait).unref();
     }
   }
 

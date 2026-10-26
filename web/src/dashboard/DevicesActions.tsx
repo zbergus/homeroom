@@ -34,7 +34,7 @@ export default function DevicesActions({ triggers }: { triggers: Trigger[] }) {
       actions={<div className="flex gap-2"><Button onClick={() => edit([...list, newAction()])}>Add action</Button><Button variant="primary" onClick={() => void save()} disabled={!dirty || busy}>Save actions</Button></div>}>
       {msg && <div className="mb-3"><Notice kind={msg.k}>{msg.t}</Notice></div>}
       <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-slate-400">Devices ({devices.length})</h3>
-      {devices.length === 0 ? <p className="mb-5 text-sm text-slate-400">None yet. Install the integration in Home Assistant to sync lights.</p> : (
+      {devices.length === 0 ? <p className="mb-5 text-sm text-slate-400">None yet. Add your Home Assistant token in Settings and click &quot;Sync devices&quot; to load your lights.</p> : (
         <ul className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {devices.map((d) => (
             <li key={d.entity_id} className="rounded-lg bg-ink-900 px-3 py-2"><div className="font-semibold">{d.name}{d.supports_color === false && <span className="ml-2 rounded bg-amber-500/20 px-1.5 text-xs font-bold text-amber-300">white only</span>}</div>

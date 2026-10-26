@@ -4,6 +4,8 @@ import { isTriggerId } from "./engine/triggers.js";
 import { LEAGUES } from "./leagues.js";
 import { MEDIA_PLAYER_RE } from "./outputs/horn_volume.js";
 
+export const TTS_ENGINE_RE = /^(tts\.[a-z0-9_]+|tts\.speak)$/;
+
 /** Runtime schemas for everything that crosses the HTTP boundary or is persisted from it. */
 
 export const ABBR_RE = /^[A-Za-z0-9]{1,8}$/;
@@ -75,6 +77,8 @@ export const SettingsPatchSchema = z.object({
   ha: HaSettingsPatch.optional(),
   horn_volume: z.number().min(0, HORN_VOL).max(1, HORN_VOL).nullable().optional(),
   horn_players: z.array(z.string().regex(MEDIA_PLAYER_RE)).max(20, "up to 20 media_player.* entity ids").optional(),
+  tts_player: z.string().regex(MEDIA_PLAYER_RE).nullable().optional(),
+  tts_engine: z.string().regex(TTS_ENGINE_RE).nullable().optional(),
   team_languages: z.record(z.string().max(20), z.enum(["en", "fr"])).optional(),
 });
 
