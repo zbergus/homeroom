@@ -358,7 +358,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const missing = store.getActions().flatMap((a) => a.entities).filter((e) => !known.has(e));
     if (missing.length) warnings.push(`Light actions reference devices Home Assistant has not synced: ${[...new Set(missing)].slice(0, 3).join(", ")}`);
     return {
-      version: "0.2.0",
+      version: "0.3.0",
       uptime_s: Math.round((Date.now() - (d.startedAt ?? Date.now())) / 1000),
       games: { tracked: games.length, live: games.filter((g) => g.status === "in").length, synced: games.filter((g) => engine.isSynced(g.id)).length },
       integration: { links: [], devices: devices.length },
