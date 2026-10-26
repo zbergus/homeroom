@@ -75,12 +75,13 @@ export function parseScoreBug(rawText: string): ParsedScoreBug {
 }
 
 /**
- * Preprocesses an image on an offscreen canvas to optimize OCR contrast and performance.
- * Downscales large camera photos to max 1600px width/height and applies contrast stretch.
+ * Prepares an image on an offscreen canvas for OCR recognition.
+ * Uses native browser createImageBitmap to handle iPhone/Android camera HEIC formats
+ * and EXIF orientation, scaling large photos to max 1920px while preserving native colors.
  */
-export async function preprocessImage(file: File | Blob): Promise<HTMLCanvasElement> {
-  const bmp = await createImageBitmap(file);
-  const maxDim = 1600;
+export async function prepareCanvas(file: File | Blob): Promise<HTMLCanvasElement> {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const maxDim = 1920;
   let { width, height } = bmp;
 
   if (width > maxDim || height > maxDim) {
@@ -96,28 +97,10 @@ export async function preprocessImage(file: File | Blob): Promise<HTMLCanvasElem
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not initialize 2D canvas context");
 
   ctx.drawImage(bmp, 0, 0, width, height);
-
-  // High contrast grayscale filter to help text detection against ice/rink
-  const imgData = ctx.getImageData(0, 0, width, height);
-  const d = imgData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i] ?? 0;
-    const g = d[i + 1] ?? 0;
-    const b = d[i + 2] ?? 0;
-    // Luminance
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    // S-curve contrast boost
-    const contrast = lum > 140 ? Math.min(255, lum * 1.2) : Math.max(0, lum * 0.8);
-    d[i] = contrast;
-    d[i + 1] = contrast;
-    d[i + 2] = contrast;
-  }
-  ctx.putImageData(imgData, 0, 0);
-
   return canvas;
 }
 
@@ -138,6 +121,7 @@ export async function scanTvClock(
   onProgress?: (progress: number) => void,
 ): Promise<ScanResult> {
   const { createWorker, PSM } = await import("tesseract.js");
+  const canvas = await prepareCanvas(file);
 
   const worker = await createWorker("eng", 1, {
     workerPath: "/ocr/worker.min.js",
@@ -152,27 +136,18 @@ export async function scanTvClock(
   });
 
   try {
-    // PSM.SPARSE_TEXT ('11') is optimal for TV score bugs floating on a broadcast screen
+    // PSM.SPARSE_TEXT ('11') is optimal for TV scoreboards floating on a broadcast screen
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
       tessedit_char_whitelist: "0123456789:.-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
     });
 
-    // Pass 1: Recognize raw photo directly with sparse text mode
-    let res = await worker.recognize(file);
+    let res = await worker.recognize(canvas);
     let parsed = parseScoreBug(res.data.text);
 
-    // Pass 2: If clock was missed, try contrast-enhanced canvas
-    if (!parsed.clock) {
-      const canvas = await preprocessImage(file);
-      res = await worker.recognize(canvas);
-      parsed = parseScoreBug(res.data.text);
-    }
-
-    // Pass 3: If still missed, try single-block mode on canvas
+    // Fallback: If sparse text missed the clock, try single block mode
     if (!parsed.clock) {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
-      const canvas = await preprocessImage(file);
       res = await worker.recognize(canvas);
       parsed = parseScoreBug(res.data.text);
     }

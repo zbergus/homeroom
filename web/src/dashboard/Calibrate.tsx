@@ -56,11 +56,11 @@ export default function Calibrate({ settings, update, live, active }: { settings
     const t0 = performance.now();
     setSnapAnchor(t0);
     setScanning(true);
-    setScanStatus("Scanning TV score bug...");
+    setScanStatus("Scanning TV scoreboard...");
     setScanNotice(null);
     try {
       const scan = await scanTvClock(file, t0, (pct) => {
-        setScanStatus(`Reading TV score bug (${pct}%)...`);
+        setScanStatus(`Scanning TV scoreboard (${pct}%)...`);
       });
       if (scan.period) setPeriod(String(scan.period));
       if (scan.clock) setClock(scan.clock);
@@ -77,7 +77,7 @@ export default function Calibrate({ settings, update, live, active }: { settings
       } else {
         setScanNotice({
           kind: "err",
-          msg: "Could not clearly read the score bug. Please type the period and clock manually.",
+          msg: "Could not clearly read the scoreboard. Please type the period and clock manually.",
         });
       }
     } catch (x) {
