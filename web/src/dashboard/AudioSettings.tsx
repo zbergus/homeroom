@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Horn, Settings, SettingsPatch, Status, TeamInfo } from "../types";
+import type { Device, Horn, Settings, SettingsPatch, Status, TeamInfo } from "../types";
 import { api, hornUrl } from "../lib/api";
 import { Button, Card, Field, inputCls, Notice, Switch } from "../components/ui";
 import { errMsg } from "../lib/errors";
@@ -111,13 +111,22 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
   const [volEnabled, setVolEnabled] = useState(volOn);
   const [pct, setPct] = useState(Math.round((settings.horn_volume ?? 0.7) * 100));
   const [playersText, setPlayersText] = useState((settings.horn_players ?? []).join("\n"));
+  const [ttsPlayer, setTtsPlayer] = useState(settings.tts_player ?? "");
+  const [ttsEngine, setTtsEngine] = useState(settings.tts_engine ?? "");
+  const [discovered, setDiscovered] = useState<{ media_players: Device[]; tts_engines: Device[] }>({ media_players: [], tts_engines: [] });
   const [volMsg, setVolMsg] = useState<{ k: "ok" | "err"; t: string } | null>(null);
+
+  useEffect(() => {
+    api.entities().then((e) => setDiscovered(e)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setVolEnabled(settings.horn_volume != null);
     if (settings.horn_volume != null) setPct(Math.round(settings.horn_volume * 100));
     setPlayersText((settings.horn_players ?? []).join("\n"));
-  }, [settings.horn_volume, settings.horn_players]);
+    setTtsPlayer(settings.tts_player ?? "");
+    setTtsEngine(settings.tts_engine ?? "");
+  }, [settings.horn_volume, settings.horn_players, settings.tts_player, settings.tts_engine]);
 
   const saveVolume = async () => {
     setVolMsg(null);
@@ -126,13 +135,15 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
     if (volEnabled && bad.length) {
       return setVolMsg({ k: "err", t: `Not a media player entity id: ${bad[0]} (e.g. media_player.living_room)` });
     }
-    if (volEnabled && !list.length) {
-      return setVolMsg({ k: "err", t: "Add at least one media player entity, or turn volume control off." });
-    }
     setBusy(true);
     try {
-      await saveNow({ horn_volume: volEnabled ? pct / 100 : null, horn_players: list });
-      setVolMsg({ k: "ok", t: volEnabled ? "Volume saved. Speakers will boost during goal horns." : "Horn volume control turned off." });
+      await saveNow({
+        horn_volume: volEnabled ? pct / 100 : null,
+        horn_players: list,
+        tts_player: ttsPlayer || null,
+        tts_engine: ttsEngine || null,
+      });
+      setVolMsg({ k: "ok", t: "Audio and speaker settings saved." });
     } catch (e) {
       setVolMsg({ k: "err", t: errMsg(e) });
     } finally {
@@ -345,18 +356,72 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
             <Field
               label="Home Assistant Media Players"
               htmlFor="horn-players"
-              hint="One media_player.* entity id per line (speakers that play the horn)."
+              hint="Speakers that play the goal horn (one media_player.* per line, or click discovered speakers)."
             >
+              {discovered.media_players.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {discovered.media_players.map((mp) => {
+                    const active = parsePlayers(playersText).includes(mp.entity_id);
+                    return (
+                      <button
+                        key={mp.entity_id}
+                        type="button"
+                        onClick={() => {
+                          const current = parsePlayers(playersText);
+                          const next = current.includes(mp.entity_id) ? current.filter((x) => x !== mp.entity_id) : [...current, mp.entity_id];
+                          setPlayersText(next.join("\n"));
+                        }}
+                        className={`rounded px-2 py-0.5 text-xs font-semibold transition ${
+                          active ? "bg-accent text-white" : "bg-ink-800 text-slate-300 hover:bg-ink-700"
+                        }`}
+                      >
+                        {mp.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <textarea
                 id="horn-players"
                 rows={3}
                 className={`${inputCls} py-2 font-mono text-xs`}
                 value={playersText}
-                disabled={!volEnabled}
                 onChange={(e) => setPlayersText(e.target.value)}
                 placeholder={"media_player.living_room\nmedia_player.den"}
                 spellCheck={false}
               />
+            </Field>
+
+            <Field label="TTS Speaker" htmlFor="tts-speaker" hint="Speaker for spoken goal announcements.">
+              <select
+                id="tts-speaker"
+                className={inputCls}
+                value={ttsPlayer}
+                onChange={(e) => setTtsPlayer(e.target.value)}
+              >
+                <option value="">Default (First horn speaker)</option>
+                {discovered.media_players.map((mp) => (
+                  <option key={mp.entity_id} value={mp.entity_id}>
+                    {mp.name} ({mp.entity_id})
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="TTS Engine" htmlFor="tts-engine" hint="Text-to-speech service in Home Assistant.">
+              <select
+                id="tts-engine"
+                className={inputCls}
+                value={ttsEngine}
+                onChange={(e) => setTtsEngine(e.target.value)}
+              >
+                <option value="">Default (tts.speak)</option>
+                {discovered.tts_engines.map((t) => (
+                  <option key={t.entity_id} value={t.entity_id}>
+                    {t.name} ({t.entity_id})
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
 

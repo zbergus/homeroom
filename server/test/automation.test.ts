@@ -83,7 +83,7 @@ describe("Dispatcher gates", () => {
   const fakes = () => {
     const calls = { ui: 0, pusher: 0, rest: 0, lights: 0 };
     const ui = { event: () => calls.ui++ };
-    const ha = { publishPusher: () => (calls.pusher++, 1), publishRest: async () => void calls.rest++ };
+    const ha = { publishPusher: () => (calls.pusher++, 1), publishRest: async () => void calls.rest++, orchestrateGoalAudio: async () => {} };
     const lights = { handle: () => (calls.lights++, 1) };
     return { calls, ui, ha, lights };
   };

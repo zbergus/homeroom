@@ -13,26 +13,64 @@ export default function HASettings({ settings, saveNow }: { settings: Settings; 
   const [msg, setMsg] = useState<{ k: "ok" | "err"; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const tokenSet = !!settings.ha.token_set;
-  useEffect(() => { setUrl(settings.ha.url); setRest(settings.ha.fire_rest_events); setBase(settings.public_base_url); }, [settings.ha.url, settings.ha.fire_rest_events, settings.public_base_url]);
+
+  useEffect(() => {
+    setUrl(settings.ha.url);
+    setRest(settings.ha.fire_rest_events);
+    setBase(settings.public_base_url);
+  }, [settings.ha.url, settings.ha.fire_rest_events, settings.public_base_url]);
 
   const typing = !tokenSet || replacing;
   const patch = (): SettingsPatch => ({ ha: { url: url.trim(), fire_rest_events: rest, ...(typing && token ? { token } : {}) }, public_base_url: base.trim() });
+
   const run = async (fn: () => Promise<string> | Promise<void>) => {
-    setBusy(true); setMsg(null);
-    try { const t = await fn(); setMsg({ k: "ok", t: t || "Saved." }); } catch (e) { setMsg({ k: "err", t: errMsg(e) }); } finally { setBusy(false); }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const t = await fn();
+      setMsg({ k: "ok", t: t || "Saved." });
+    } catch (e) {
+      setMsg({ k: "err", t: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
   };
-  const save = () => run(async () => { await saveNow(patch()); setToken(""); setReplacing(false); });
+
+  const save = () => run(async () => {
+    await saveNow(patch());
+    setToken("");
+    setReplacing(false);
+  });
+
   const test = () => run(async () => {
-    await saveNow(patch()); setToken(""); setReplacing(false);
+    await saveNow(patch());
+    setToken("");
+    setReplacing(false);
     const r = await api.haTest();
     const ok = r?.ok ?? r?.success ?? true;
     if (!ok) throw new Error(r?.error ?? r?.message ?? "Test failed.");
-    return r?.message ?? "Home Assistant accepted the test event.";
+    if (r?.sync) {
+      return `Connected! Discovered ${r.sync.lights} lights, ${r.sync.media_players} speakers, and ${r.sync.tts_engines} TTS engines.`;
+    }
+    return r?.message ?? "Home Assistant accepted the test connection.";
   });
-  const remove = () => { if (!confirm("Remove the saved Home Assistant token?")) return; void run(async () => { await saveNow({ ha: { clear_token: true } }); return "Token removed."; }); };
+
+  const sync = () => run(async () => {
+    const r = await api.haSync();
+    if (!r.ok) throw new Error(r.error || "Sync failed");
+    return `Synced ${r.lights} lights, ${r.media_players} speakers, and ${r.tts_engines} TTS engines.`;
+  });
+
+  const remove = () => {
+    if (!confirm("Remove the saved Home Assistant token?")) return;
+    void run(async () => {
+      await saveNow({ ha: { clear_token: true } });
+      return "Token removed.";
+    });
+  };
 
   return (
-    <Card title="Home Assistant" subtitle="Optional direct REST events. The drop-in integration needs no config here.">
+    <Card title="Home Assistant" subtitle="Direct Home Assistant connection. Automatically discovers lights, speakers, and TTS engines.">
       <form className="grid gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); void save(); }}>
         <Field label="Home Assistant URL" htmlFor="ha-url" hint="e.g. http://homeassistant.local:8123">
           <input id="ha-url" className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://homeassistant.local:8123" inputMode="url" autoComplete="off" />
@@ -58,14 +96,15 @@ export default function HASettings({ settings, saveNow }: { settings: Settings; 
         </Field>
         <div className="flex items-center gap-3 self-end pb-2">
           <Switch checked={rest} onChange={setRest} label="Fire REST events" />
-          <div><div className="text-sm font-medium">Fire REST events</div><div className="text-xs text-slate-400">Posts homeroom_* events to HA.</div></div>
+          <div><div className="text-sm font-medium">Fire REST events</div><div className="text-xs text-slate-400">Posts homeroom_* events to the HA event bus.</div></div>
         </div>
         <p className="rounded-lg bg-ink-900 px-3 py-2 text-sm text-slate-300 sm:col-span-2">
-          Pick one path for lights: the HA integration or REST events. Using both fires every automation twice.
+          Homeroom connects directly via your Long-Lived Access Token to control lights, horns, and TTS. Enabling &quot;Fire REST events&quot; also posts homeroom_goal events on the HA event bus for custom user automations.
         </p>
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
           <Button variant="primary" type="submit" disabled={busy}>Save</Button>
           <Button onClick={() => void test()} disabled={busy || !url}>Test connection</Button>
+          <Button onClick={() => void sync()} disabled={busy || !url}>Sync devices</Button>
           {msg && <Notice kind={msg.k}>{msg.t}</Notice>}
         </div>
       </form>

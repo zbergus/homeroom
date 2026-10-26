@@ -35,6 +35,8 @@ const DEFAULT_SETTINGS: Settings = {
   ha: { url: "", token: "", fire_rest_events: false },
   horn_volume: null,
   horn_players: [],
+  tts_player: null,
+  tts_engine: null,
   team_languages: { MTL: "fr" },
 };
 
