@@ -8,7 +8,7 @@ import { ConnDot } from "../components/Kiosk";
 import { GoalOverlay, useGoalQueue } from "../kiosk/GoalOverlay";
 import { HockeyTickerBanner, findShots, getTickerAlert } from "../components/HockeyTickerBanner";
 
-const CARD_WIDTH_U = 40;
+const CARD_WIDTH_U = 48;
 const CARD_GAP_U = 2.5;
 const SPEED_PX_PER_SEC = 120; // smooth broadcast ticker speed
 

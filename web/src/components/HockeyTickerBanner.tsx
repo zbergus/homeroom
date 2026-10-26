@@ -50,8 +50,8 @@ function TeamTopRibbon({
         flash ? "goal-siren-strobe bar-flash" : ""
       }`}
       style={{
-        padding: `${U(0.5)} ${U(1.6)}`,
-        gap: U(1.1),
+        padding: `${U(0.5)} ${U(1.2)}`,
+        gap: U(0.8),
         color: colors.text,
         background: isAway
           ? `linear-gradient(135deg, ${colors.fill} 0%, ${colors.deep} 100%)`
@@ -61,24 +61,24 @@ function TeamTopRibbon({
     >
       <HighContrastCrest team={team} />
       <div
-        className="flex min-w-0 flex-1 flex-col justify-center"
+        className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden"
         style={{
           alignItems: isAway ? "flex-start" : "flex-end",
           textAlign: isAway ? "left" : "right",
         }}
       >
         <span
-          className="truncate font-display font-black uppercase tracking-wide leading-none"
+          className="block w-full truncate font-display font-black uppercase tracking-wide leading-none"
           style={{
-            fontSize: U(2.2),
+            fontSize: U(1.8),
             textShadow: colors.textIsDark ? "none" : "0 0.05em 0.25em rgba(0,0,0,0.6)",
           }}
         >
           {team.name}
         </span>
         <span
-          className="font-display font-bold uppercase tracking-wider opacity-80 leading-none"
-          style={{ fontSize: U(1.2), marginTop: U(0.3) }}
+          className="block w-full truncate font-display font-bold uppercase tracking-wider opacity-80 leading-none"
+          style={{ fontSize: U(1.1), marginTop: U(0.3) }}
         >
           {team.abbr}
         </span>
@@ -87,11 +87,11 @@ function TeamTopRibbon({
         <span
           className="num shrink-0 font-display font-black leading-none"
           style={{
-            fontSize: U(3.8),
+            fontSize: U(3.4),
             color: colors.text,
             textShadow: colors.textIsDark ? "none" : "0 0.05em 0.25em rgba(0,0,0,0.6)",
-            marginLeft: isAway ? U(0.5) : 0,
-            marginRight: isAway ? 0 : U(0.5),
+            marginLeft: isAway ? U(0.4) : 0,
+            marginRight: isAway ? 0 : U(0.4),
           }}
         >
           {score}
@@ -202,7 +202,7 @@ function BottomBanner({
         background: "linear-gradient(180deg, rgba(8,12,20,0.95) 0%, rgba(3,6,12,0.98) 100%)",
       }}
     >
-      {/* Away SOG */}
+      {/* Away SOG / Record */}
       <div className="flex items-center" style={{ gap: U(0.6), minWidth: U(8) }}>
         <span
           className="rounded-full shrink-0"
@@ -212,7 +212,7 @@ function BottomBanner({
           className="font-display font-bold uppercase tracking-wider text-slate-400"
           style={{ fontSize: U(1.3) }}
         >
-          SOG
+          {shots ? "SOG" : "REC"}
         </span>
         <span
           className="num font-display font-black text-white"
@@ -283,7 +283,7 @@ function BottomBanner({
         )}
       </div>
 
-      {/* Home SOG */}
+      {/* Home SOG / Record */}
       <div className="flex items-center justify-end" style={{ gap: U(0.6), minWidth: U(8) }}>
         <span
           className="num font-display font-black text-white"
@@ -295,7 +295,7 @@ function BottomBanner({
           className="font-display font-bold uppercase tracking-wider text-slate-400"
           style={{ fontSize: U(1.3) }}
         >
-          SOG
+          {shots ? "SOG" : "REC"}
         </span>
         <span
           className="rounded-full shrink-0"
@@ -324,7 +324,7 @@ export function HockeyTickerBanner({
     <div
       className="inline-flex flex-col shrink-0 overflow-hidden rounded-[calc(var(--u)*1.2)] border border-white/15 shadow-[0_0.8vmin_2.5vmin_rgba(0,0,0,0.6)]"
       style={{
-        width: U(40),
+        width: U(48),
         height: U(11),
       }}
     >

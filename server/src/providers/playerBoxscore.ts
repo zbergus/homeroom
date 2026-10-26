@@ -40,9 +40,9 @@ export function parseEspnPlayerBoxscore(data: Raw, game: Game): HockeyBoxscore |
 
         if (isGoalie) {
           const saves = Number(statMap["saves"]) || 0;
-          const sa = Number(statMap["shotsAgainst"]) || 0;
           const ga = Number(statMap["goalsAgainst"]) || 0;
-          let svPct = statMap["savePct"] ?? (sa > 0 ? (saves / sa).toFixed(3) : ".000");
+          const sa = Number(statMap["shotsAgainst"]) || (saves + ga);
+          let svPct = statMap["savePct"] ?? (sa > 0 ? (saves / sa >= 1 ? "1.000" : (saves / sa).toFixed(3)) : ".000");
           if (svPct.startsWith("0.")) svPct = svPct.slice(1);
           goalies.push({
             id,
@@ -80,6 +80,19 @@ export function parseEspnPlayerBoxscore(data: Raw, game: Game): HockeyBoxscore |
         }
       }
     }
+
+    // Sort goalies so active/starter with highest TOI is first
+    goalies.sort((a, b) => {
+      const toiSec = (t: string) => {
+        const [m = 0, s = 0] = t.split(":").map(Number);
+        return (Number.isFinite(m) ? m : 0) * 60 + (Number.isFinite(s) ? s : 0);
+      };
+      const diff = toiSec(b.toi) - toiSec(a.toi);
+      if (diff !== 0) return diff;
+      if (a.starter && !b.starter) return -1;
+      if (b.starter && !a.starter) return 1;
+      return b.saves - a.saves;
+    });
 
     return { team, skaters, goalies };
   };
@@ -152,9 +165,17 @@ export function parseNhlApiBoxscore(data: Raw, game: Game): HockeyBoxscore | nul
         const name = String(item.name?.default ?? "Unknown");
         const jersey = item.sweaterNumber ? String(item.sweaterNumber) : undefined;
         const saves = Number(item.saves) || 0;
-        const sa = Number(item.shots) || 0;
         const ga = Number(item.goalsAgainst) || 0;
-        let svPct = item.savePctg ? String(item.savePctg) : sa > 0 ? (saves / sa).toFixed(3) : ".000";
+        const sa = Number(item.shotsAgainst ?? item.shots) || (saves + ga);
+        let svPct: string;
+        if (typeof item.savePctg === "number") {
+          svPct = item.savePctg >= 1 ? "1.000" : item.savePctg > 0 ? item.savePctg.toFixed(3).replace(/^0\./, ".") : ".000";
+        } else if (typeof item.savePctg === "string" && item.savePctg) {
+          const n = Number(item.savePctg);
+          svPct = !Number.isNaN(n) ? (n >= 1 ? "1.000" : n > 0 ? n.toFixed(3).replace(/^0\./, ".") : ".000") : item.savePctg;
+        } else {
+          svPct = sa > 0 ? (saves / sa >= 1 ? "1.000" : (saves / sa).toFixed(3).replace(/^0\./, ".")) : ".000";
+        }
         if (svPct.startsWith("0.")) svPct = svPct.slice(1);
         goalies.push({
           id,
@@ -175,6 +196,19 @@ export function parseNhlApiBoxscore(data: Raw, game: Game): HockeyBoxscore | nul
     parseSkaters(raw.forwards ?? []);
     parseSkaters(raw.defense ?? []);
     parseGoalies(raw.goalies ?? []);
+
+    // Sort goalies so active/starter with highest TOI is first
+    goalies.sort((a, b) => {
+      const toiSec = (t: string) => {
+        const [m = 0, s = 0] = t.split(":").map(Number);
+        return (Number.isFinite(m) ? m : 0) * 60 + (Number.isFinite(s) ? s : 0);
+      };
+      const diff = toiSec(b.toi) - toiSec(a.toi);
+      if (diff !== 0) return diff;
+      if (a.starter && !b.starter) return -1;
+      if (b.starter && !a.starter) return 1;
+      return b.saves - a.saves;
+    });
 
     return { team, skaters, goalies };
   };

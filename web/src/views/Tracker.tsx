@@ -113,8 +113,15 @@ function GoalieCard({
     goalie.save_pct.startsWith(".93") ||
     goalie.save_pct.startsWith(".94") ||
     goalie.save_pct.startsWith(".95") ||
-    goalie.save_pct === "1.000";
+    goalie.save_pct === "1.000" ||
+    goalie.save_pct === "1.0" ||
+    goalie.save_pct === "1";
   const isLow = Number(goalie.save_pct) < 0.88 && Number(goalie.save_pct) > 0;
+  const svPctFormatted =
+    goalie.save_pct === "1" || goalie.save_pct === "1.0"
+      ? "1.000"
+      : goalie.save_pct;
+  const shotsAgainst = Math.max(goalie.shots_against, goalie.saves + goalie.goals_against);
 
   return (
     <div
@@ -156,7 +163,7 @@ function GoalieCard({
             SAVES / SHOTS
           </span>
           <span className="num font-display font-black text-white" style={{ fontSize: U(2.8) }}>
-            {goalie.saves} <span className="opacity-40">/</span> {goalie.shots_against}
+            {goalie.saves} <span className="opacity-40">/</span> {shotsAgainst}
           </span>
         </div>
 
@@ -174,12 +181,27 @@ function GoalieCard({
             SV%
           </span>
           <span className="num font-display font-black text-white" style={{ fontSize: U(2.8) }}>
-            {goalie.save_pct}
+            {svPctFormatted}
           </span>
         </div>
       </div>
     </div>
   );
+}
+
+function getPrimaryGoalie(goalies: GoalieStats[] | undefined): GoalieStats | undefined {
+  if (!goalies || goalies.length === 0) return undefined;
+  return [...goalies].sort((a, b) => {
+    const toiSec = (t: string) => {
+      const [m = 0, s = 0] = t.split(":").map(Number);
+      return (Number.isFinite(m) ? m : 0) * 60 + (Number.isFinite(s) ? s : 0);
+    };
+    const diff = toiSec(b.toi) - toiSec(a.toi);
+    if (diff !== 0) return diff;
+    if (a.starter && !b.starter) return -1;
+    if (b.starter && !a.starter) return 1;
+    return b.saves - a.saves;
+  })[0];
 }
 
 /* ------------------------------------------------------------------ Skater Table */
@@ -763,6 +785,8 @@ export default function Tracker() {
 
   // Active boxscore resolution (fallback if not yet fetched)
   const activeBox = boxscore && boxscore.game_id === currentGame.id ? boxscore : fallbackHockeyBoxscore(currentGame);
+  const awayGoalie = getPrimaryGoalie(activeBox.away.goalies);
+  const homeGoalie = getPrimaryGoalie(activeBox.home.goalies);
   const { away: awayColors, home: homeColors } = resolveMatchup(currentGame.away, currentGame.home, { whiteText: true });
 
   const showAway = teamMode === "both" || teamMode === "away";
@@ -815,17 +839,17 @@ export default function Tracker() {
         <div className="flex-1 min-h-0 flex flex-col p-[1.6vmin] overflow-hidden" style={{ gap: U(1.6) }}>
           {/* Goalie Duel Showcase */}
           <section className="grid grid-cols-1 md:grid-cols-2 shrink-0" style={{ gap: U(1.6) }}>
-            {activeBox.away.goalies[0] && (
+            {awayGoalie && (
               <GoalieCard
-                goalie={activeBox.away.goalies[0]}
+                goalie={awayGoalie}
                 team={currentGame.away}
                 c={awayColors}
                 side="away"
               />
             )}
-            {activeBox.home.goalies[0] && (
+            {homeGoalie && (
               <GoalieCard
-                goalie={activeBox.home.goalies[0]}
+                goalie={homeGoalie}
                 team={currentGame.home}
                 c={homeColors}
                 side="home"

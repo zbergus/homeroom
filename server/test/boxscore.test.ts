@@ -87,7 +87,7 @@ describe("playerBoxscore parser", () => {
     expect(cossa?.save_pct).toBe(".800");
   });
 
-  it("parses NHL API boxscore structure", () => {
+  it("parses NHL API boxscore structure with shotsAgainst and orders active starter first", () => {
     const nhlRaw = {
       playerByGameStats: {
         awayTeam: {
@@ -96,7 +96,10 @@ describe("playerBoxscore parser", () => {
           ],
           defense: [],
           goalies: [
-            { playerId: 201, name: { default: "Stuart Skinner" }, sweaterNumber: 74, saves: 28, shots: 30, goalsAgainst: 2, savePctg: ".933", toi: "60:00" },
+            // Backup listed first in API response with 0 TOI
+            { playerId: 202, name: { default: "Calvin Pickard" }, sweaterNumber: 30, saves: 0, shotsAgainst: 0, goalsAgainst: 0, savePctg: 0, toi: "00:00", starter: false },
+            // Starter listed second with full TOI and 1.000 SV%
+            { playerId: 201, name: { default: "Stuart Skinner" }, sweaterNumber: 74, saves: 28, shotsAgainst: 28, goalsAgainst: 0, savePctg: 1.0, toi: "60:00", starter: true },
           ],
         },
         homeTeam: {
@@ -114,8 +117,14 @@ describe("playerBoxscore parser", () => {
     expect(parsed.away.skaters[0]?.name).toBe("Connor McDavid");
     expect(parsed.away.skaters[0]?.points).toBe(3);
     expect(parsed.away.skaters[0]?.toi).toBe("21:30");
+    // Stuart Skinner should be sorted to index 0 because of higher TOI and starter status
     expect(parsed.away.goalies[0]?.name).toBe("Stuart Skinner");
-    expect(parsed.away.goalies[0]?.save_pct).toBe(".933");
+    expect(parsed.away.goalies[0]?.shots_against).toBe(28);
+    expect(parsed.away.goalies[0]?.saves).toBe(28);
+    expect(parsed.away.goalies[0]?.save_pct).toBe("1.000");
+    // Backup is second
+    expect(parsed.away.goalies[1]?.name).toBe("Calvin Pickard");
+    expect(parsed.away.goalies[1]?.toi).toBe("00:00");
   });
 
   it("generates defensive fallback boxscore with calculated goalie stats and goals", () => {
