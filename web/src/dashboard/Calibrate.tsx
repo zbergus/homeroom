@@ -52,27 +52,42 @@ export default function Calibrate({ settings, update, live, active }: { settings
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Anchor timestamp at shutter capture to subtract OCR & review duration
+    // Anchor timestamp at shutter capture to subtract OCR duration
     const t0 = performance.now();
     setSnapAnchor(t0);
     setScanning(true);
     setScanStatus("Scanning TV scoreboard...");
     setScanNotice(null);
+    setRes(null);
+    setErr("");
+    setApplied("");
     try {
       const scan = await scanTvClock(file, t0, (pct) => {
         setScanStatus(`Scanning TV scoreboard (${pct}%)...`);
       });
       if (scan.period) setPeriod(String(scan.period));
       if (scan.clock) setClock(scan.clock);
-      if (scan.period && scan.clock) {
-        setScanNotice({
-          kind: "info",
-          msg: `Detected Period ${scan.period}, Clock ${scan.clock} (${(scan.elapsedMs / 1000).toFixed(1)}s elapsed). Review and tap Suggest Delay.`,
-        });
+      if (scan.period && scan.clock && game) {
+        setScanStatus("Calculating delay...");
+        try {
+          const suggestion = await api.calibrate({
+            game_id: game.id,
+            tv_period: scan.period,
+            tv_clock: scan.clock,
+            elapsed_ms: scan.elapsedMs,
+          });
+          setRes(suggestion);
+          setScanNotice({
+            kind: "info",
+            msg: `Camera scanned Period ${scan.period}, Clock ${scan.clock}. Suggested delay calculated below.`,
+          });
+        } catch (calErr) {
+          setErr(friendly(calErr));
+        }
       } else if (scan.clock) {
         setScanNotice({
           kind: "info",
-          msg: `Detected Clock ${scan.clock}. Please verify or enter the Period, then tap Suggest Delay.`,
+          msg: `Detected Clock ${scan.clock}. Please check Period and tap Suggest delay.`,
         });
       } else {
         setScanNotice({
@@ -85,6 +100,7 @@ export default function Calibrate({ settings, update, live, active }: { settings
     } finally {
       setScanning(false);
       setScanStatus("");
+      setSnapAnchor(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };

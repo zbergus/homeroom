@@ -309,7 +309,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const tv = parseClock(b.tv_clock ?? "");
     if (tv === undefined || b.tv_period === undefined || !Number.isInteger(b.tv_period) || b.tv_period < 1) return reply.code(400).send({ error: "tv_period (1..) and tv_clock (M:SS) are required" });
     if (g.status !== "in") return reply.code(409).send({ error: "This game is not live. Try again while the TV game clock is ticking." });
-    const elapsed = Math.min(120_000, Math.max(0, b.elapsed_ms ?? 0));
+    const elapsed = Math.min(150_000, Math.max(0, b.elapsed_ms ?? 0));
     const observationAt = Date.now() - elapsed;
     const suggestion = engine.clockHistory.suggest(g.id, { period: b.tv_period, clock_s: tv }, observationAt);
     if (!suggestion) return reply.code(409).send({

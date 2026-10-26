@@ -132,7 +132,7 @@ export const CalibrateBodySchema = z.object({
   game_id: z.string().max(100).optional(),
   tv_period: z.number().optional(),
   tv_clock: z.string().max(20).optional(),
-  elapsed_ms: z.number().nonnegative().max(120_000).optional(),
+  elapsed_ms: z.number().nonnegative().max(150_000).optional(),
 });
 
 export const DevicesSyncSchema = z.object({
