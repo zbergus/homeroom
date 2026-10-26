@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Engine } from "../src/engine/engine.js";
 import { HaOutputs } from "../src/outputs/ha.js";
 import { LightRules } from "../src/outputs/lights.js";
-import { PusherHub } from "../src/outputs/pusher.js";
 import { Store } from "../src/store.js";
 import type { EventPayload, Game, Team } from "../src/types.js";
 
@@ -121,7 +120,6 @@ describe("Direct Home Assistant REST integration", () => {
   let haUrl: string;
   let store: Store;
   let engine: Engine;
-  let hub: PusherHub;
   let haOutputs: HaOutputs;
   let lightRules: LightRules;
 
@@ -136,9 +134,8 @@ describe("Direct Home Assistant REST integration", () => {
       tts_engine: "tts.piper",
     });
     engine = new Engine(store);
-    hub = new PusherHub(store, "app-key", "app-secret");
-    haOutputs = new HaOutputs(engine, hub);
-    lightRules = new LightRules(engine, hub);
+    haOutputs = new HaOutputs(engine);
+    lightRules = new LightRules(engine);
   });
 
   afterEach(() => {

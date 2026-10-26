@@ -139,20 +139,6 @@ export const CalibrateBodySchema = z.object({
   elapsed_ms: z.number().nonnegative().max(150_000).optional(),
 });
 
-export const DevicesSyncSchema = z.object({
-  devices: z.array(z.record(z.string(), z.unknown())).max(2000).default([]),
-});
-
-export const ExecuteBodySchema = z.object({
-  request_id: z.string().max(100).optional(),
-  payload: z.union([z.string().max(100_000), z.record(z.string(), z.unknown())]).optional(),
-});
-
-export const WsAuthBodySchema = z.object({
-  socket_id: z.string().max(100).optional(),
-  channel_name: z.string().max(200).optional(),
-});
-
 /** "path: message" for the first issue, for the `{ error }` bodies the UI shows verbatim */
 export function firstIssue(e: z.ZodError): string {
   const i = e.issues[0];

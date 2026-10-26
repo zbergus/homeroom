@@ -1,11 +1,8 @@
-import { randomUUID } from "node:crypto";
 import type { Engine } from "../engine/engine.js";
 import { matchesAny } from "../engine/triggers.js";
 import { errMsg } from "../security.js";
 import type { EventPayload, LightAction, Rgb } from "../types.js";
-import type { PusherHub } from "./pusher.js";
 
-const STATE_WAIT_MS = 1500;
 const RESTORE_MARGIN_MS = 500;
 
 type Attrs = Record<string, unknown>;
@@ -17,7 +14,6 @@ function effectList(dev: Record<string, unknown>): string[] {
   const l = (dev.capabilities as { effect_list?: unknown } | null | undefined)?.effect_list;
   return Array.isArray(l) ? l.map(String) : [];
 }
-const OFF_EFFECT = /^(none|off|no effect|no_effect)$/i;
 
 const COLOR_MODES = new Set(["hs", "rgb", "xy", "rgbw", "rgbww"]);
 
@@ -36,27 +32,16 @@ export interface LightRulesOpts {
 /**
  * Light automation engine: decides which synced HA entities to flash /
  * alternate / recolour for an event, and restores them afterwards.
- * Directly commands Home Assistant via REST, or via Pusher when a bridge is connected.
+ * Directly commands Home Assistant via native REST.
  */
 export class LightRules {
-  private pending = new Map<string, (a: Attrs) => void>();
   private f: typeof fetch;
 
   constructor(
     private engine: Engine,
-    private hub: PusherHub,
     opts: LightRulesOpts = {},
   ) {
     this.f = opts.fetchImpl ?? fetch;
-  }
-
-  /** Called from POST /requests/execute (the integration's reply to get_state). */
-  receiveState(requestId: string, attrs: Attrs): boolean {
-    const r = this.pending.get(requestId);
-    if (!r) return false;
-    this.pending.delete(requestId);
-    r(attrs);
-    return true;
   }
 
   /** Returns how many (action, entity) commands were issued. */
@@ -73,7 +58,7 @@ export class LightRules {
         const dev = devices.get(entity);
         if (!dev) continue;
         issued++;
-        void this.run(a, ev, entity, dev.integration_key, supportsColor(dev), dev).catch((e) => console.error("[lights]", entity, e));
+        void this.run(a, ev, entity, supportsColor(dev), dev).catch((e) => console.error("[lights]", entity, e));
       }
     }
     return issued;
@@ -130,16 +115,13 @@ export class LightRules {
     }
   }
 
-  private async run(a: LightAction, ev: EventPayload, entity: string, integrationKey: string, canColor: boolean, dev: Record<string, unknown>): Promise<void> {
+  private async run(a: LightAction, ev: EventPayload, entity: string, canColor: boolean, dev: Record<string, unknown>): Promise<void> {
     const { ha } = this.engine.settings;
-    const channel = `private-home-assistant.${integrationKey}`;
-    const usePusher = this.hub.subscribers(channel) > 0;
-    const useRest = !usePusher && !!ha.url && !!ha.token;
-    if (!usePusher && !useRest) return;
+    if (!ha.url || !ha.token) return;
 
     let before: Attrs | undefined;
     if (a.restore) {
-      before = usePusher ? await this.getState(channel, entity) : await this.getStateRest(entity);
+      before = await this.getStateRest(entity);
     }
 
     const colors = this.colorsFor(a, ev);
@@ -149,21 +131,6 @@ export class LightRules {
     const effects = effectList(dev);
     const wanted = a.effect === "light_effect" && a.light_effect && effects.includes(a.light_effect) ? a.light_effect : undefined;
     const effect = a.effect === "light_effect" ? (wanted ? "light_effect" : "flash") : !canColor && a.effect !== "flash" ? "flash" : a.effect;
-
-    if (usePusher) {
-      const send = (data: Record<string, unknown>) => this.hub.broadcast(channel, `execute.${entity}`, data);
-      if (effect === "light_effect") send({ action: "set_effect", effect: wanted });
-      else if (effect === "flash") send({ action: "flash", duration: a.duration, speed: a.speed });
-      else if (effect === "alternate") send({ action: "alternate", duration: a.duration, speed: a.speed, colors: colors.length > 1 ? colors : [first, null] });
-      else send({ action: "set_color", rgb_color: arr(first) });
-
-      if (a.restore && before && effect !== "flash") {
-        const wait = effect === "alternate" ? a.duration * 1000 + RESTORE_MARGIN_MS : a.duration * 1000;
-        const off = effect === "light_effect" && !before.effect ? effects.find((e) => OFF_EFFECT.test(e)) : undefined;
-        setTimeout(() => send({ action: "restore", state: off ? { ...before, effect: off } : before }), wait).unref();
-      }
-      return;
-    }
 
     // Direct REST path
     if (effect === "set_color") {
@@ -209,20 +176,5 @@ export class LightRules {
         }
       }, wait).unref();
     }
-  }
-
-  private getState(channel: string, entity: string): Promise<Attrs | undefined> {
-    return new Promise((resolve) => {
-      const id = randomUUID();
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        resolve(undefined);
-      }, STATE_WAIT_MS);
-      this.pending.set(id, (a) => {
-        clearTimeout(timer);
-        resolve(a);
-      });
-      this.hub.broadcast(channel, `get_state.${entity}`, { request_id: id });
-    });
   }
 }

@@ -136,14 +136,6 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
     }
   };
 
-  const clearLegacyLinks = async () => {
-    try {
-      await api.clearHaLinks();
-    } catch {
-      // ignore
-    }
-  };
-
   const s = status.data;
   const now = useNow();
 
@@ -203,7 +195,7 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
               <strong>{s.games.live}</strong> live / <strong>{s.games.tracked}</strong> tracked
             </span>
             <span className="rounded bg-black/40 px-2 py-1">
-              HA: <strong>{s.ha?.configured ? `${s.ha.devices_count} devices synced` : s.outputs.pusher_connected ? "pusher active" : "not connected"}</strong>
+              HA: <strong>{s.ha?.configured ? `${s.ha.devices_count} devices synced` : "not connected"}</strong>
             </span>
             <span className="rounded bg-black/40 px-2 py-1">
               Horns: <strong>{s.horns.files}</strong> installed
@@ -262,20 +254,6 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
                 </div>
               ) : (
                 <p className="text-xs text-slate-400">Not configured. Enter HA URL and token in Settings.</p>
-              )}
-              {s.integration.links.length > 0 && (
-                <div className="mt-3 border-t border-white/5 pt-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Legacy links ({s.integration.links.length})</span>
-                    <button
-                      type="button"
-                      onClick={() => void clearLegacyLinks()}
-                      className="text-amber-400 hover:underline"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
               )}
             </div>
             <div className="rounded-xl bg-ink-900 p-3">

@@ -103,7 +103,7 @@ if (!a["server-only"]) {
   store.setSyncedGames(games.map((g) => g.id));
   const webDir = process.env.WEB_DIR ?? path.resolve(here, "../../../web/dist");
   const appPort = simPort + 1;
-  const app = await createApp({ store, appKey: "sim-key", appSecret: "sim-secret", webDir, port: appPort, startPoller: true });
+  const app = await createApp({ store, webDir, port: appPort, startPoller: true });
   closeApp = () => app.close();
   console.log(`[sim] Homeroom (SIM) on http://127.0.0.1:${app.port}  data ${dataDir}  delay ${delayS}s`);
   for (const g of games) {

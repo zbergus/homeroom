@@ -3,17 +3,8 @@ import type { Engine } from "../engine/engine.js";
 import { errMsg } from "../security.js";
 import type { EventPayload, Rgb } from "../types.js";
 import { HornVolume, type HornVolumeOpts } from "./horn_volume.js";
-import type { PusherHub } from "./pusher.js";
 
 const rgb = (c: Rgb) => [c.r, c.g, c.b];
-
-/** Celebration metadata is UI-only; keep both scoring and nested game goals off the integration wire. */
-function integrationScorer<T extends { scorer_id?: string | undefined; scorer_number?: string | undefined }>(value: T): T {
-  const copy = { ...value };
-  delete copy.scorer_id;
-  delete copy.scorer_number;
-  return copy;
-}
 
 /** Flat body for the direct-REST path (`homeroom_<type>` events on the HA bus). */
 function flatBody(ev: EventPayload, ttsEnabled: boolean): Record<string, unknown> {
@@ -64,7 +55,6 @@ export class HaOutputs {
 
   constructor(
     private engine: Engine,
-    private hub: PusherHub,
     opts: HaOutputsOpts = {},
   ) {
     this.f = opts.fetchImpl ?? fetch;
@@ -219,29 +209,6 @@ export class HaOutputs {
     if (s.tts_enabled && ev.natural_text) {
       await this.speakAnnouncement(ev.natural_text);
     }
-  }
-
-  /** Pusher path: publish to every linked integration client. */
-  publishPusher(ev: EventPayload): number {
-    const tts = this.engine.settings.tts_enabled;
-    const data = {
-      ...ev,
-      ...(ev.scoring ? { scoring: integrationScorer(ev.scoring) } : {}),
-      game: { ...ev.game, goals: ev.game.goals.map(integrationScorer) },
-      natural_text: tts ? ev.natural_text : null,
-    };
-    let clients = 0;
-    const hornReady = ev.type === "goal" && ev.goal_horn ? this.hornVolume.prepare(ev.event_id) : undefined;
-    const sendHorn = (ch: string) => this.hub.broadcast(ch, "goal_horn", { audioFile: ev.goal_horn });
-    for (const l of this.engine.store.allLinks()) {
-      const ch = `private-${l.unique_id}`;
-      clients += this.hub.broadcast(ch, ev.type, data);
-      if (ev.type === "goal" && ev.goal_horn) {
-        if (hornReady && this.hornVolume.enabled()) void hornReady.then(() => sendHorn(ch));
-        else sendHorn(ch);
-      }
-    }
-    return clients;
   }
 
   async publishRest(ev: EventPayload): Promise<void> {

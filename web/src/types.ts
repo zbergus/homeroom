@@ -330,7 +330,7 @@ export interface EventRecord {
   delay_s: number;
   outcome: "delivered" | "filtered";
   reason?: string | undefined;
-  sent: { pusher_clients: number; rest: boolean; lights: number };
+  sent: { rest: boolean; lights: number; pusher_clients?: number | undefined };
 }
 
 export interface Status {
@@ -347,7 +347,7 @@ export interface Status {
     speakers_count: number;
     tts_count: number;
   } | undefined;
-  outputs: { rest_events: boolean; pusher_connected: boolean };
+  outputs: { rest_events: boolean; pusher_connected?: boolean | undefined };
   horns: { files: number; url_check: { ok: boolean | null; detail: string } };
   audio?: { ffmpeg: boolean; mode: "ffmpeg" | "truncate-only" };
   public_base_url: string;

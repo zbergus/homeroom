@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
-import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { LEAGUES } from "./leagues.js";
@@ -40,16 +39,6 @@ const DEFAULT_SETTINGS: Settings = {
   team_languages: { MTL: "fr" },
 };
 
-/** one home has one, maybe two, Home Assistant installs */
-export const MAX_LINKS = 20;
-
-interface LinkRow {
-  api_key: string;
-  unique_id: string;
-  websocket_key: string;
-  integration_key: string;
-}
-
 export class Store {
   db: DatabaseSyncType;
 
@@ -61,7 +50,6 @@ export class Store {
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sync_games (game_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS favorites (league TEXT, abbr TEXT, PRIMARY KEY (league, abbr));
-      CREATE TABLE IF NOT EXISTS links (api_key TEXT PRIMARY KEY, unique_id TEXT, websocket_key TEXT, integration_key TEXT);
       CREATE TABLE IF NOT EXISTS devices (entity_id TEXT PRIMARY KEY, json TEXT NOT NULL, integration_key TEXT);
       CREATE TABLE IF NOT EXISTS team_overrides (league TEXT, abbr TEXT, json TEXT, PRIMARY KEY (league, abbr));
       CREATE TABLE IF NOT EXISTS emitted (key TEXT PRIMARY KEY, at INTEGER);
@@ -123,34 +111,6 @@ export class Store {
     this.db.exec("DELETE FROM favorites");
     const st = this.db.prepare("INSERT OR IGNORE INTO favorites(league,abbr) VALUES(?,?)");
     for (const x of f) st.run(x.league, x.abbr.toUpperCase());
-  }
-
-  // ---- HA integration links (one stable identity per api key)
-  /** Returns undefined once MAX_LINKS installs are linked, so an open link endpoint cannot grow the table without bound. */
-  link(apiKey: string): LinkRow | undefined {
-    const row = this.db.prepare("SELECT * FROM links WHERE api_key=?").get(apiKey) as LinkRow | undefined;
-    if (row) return row;
-    if (this.allLinks().length >= MAX_LINKS) return undefined;
-    const fresh: LinkRow = {
-      api_key: apiKey,
-      unique_id: randomBytes(8).toString("hex"),
-      websocket_key: randomBytes(16).toString("hex"),
-      integration_key: randomBytes(8).toString("hex"),
-    };
-    this.db.prepare("INSERT INTO links VALUES(?,?,?,?)").run(fresh.api_key, fresh.unique_id, fresh.websocket_key, fresh.integration_key);
-    return fresh;
-  }
-  linkByApiKey(k: string): LinkRow | undefined {
-    return this.db.prepare("SELECT * FROM links WHERE api_key=?").get(k) as LinkRow | undefined;
-  }
-  linkByWebsocketKey(k: string): LinkRow | undefined {
-    return this.db.prepare("SELECT * FROM links WHERE websocket_key=?").get(k) as LinkRow | undefined;
-  }
-  allLinks(): LinkRow[] {
-    return this.db.prepare("SELECT * FROM links").all() as unknown as LinkRow[];
-  }
-  clearLinks(): void {
-    this.db.exec("DELETE FROM links");
   }
 
   // ---- devices synced from HA

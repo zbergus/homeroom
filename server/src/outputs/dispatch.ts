@@ -9,12 +9,6 @@ import { createLogger } from "../logger.js";
 const log = createLogger("dispatch");
 import { errMsg } from "../security.js";
 
-/**
- * Events that must not go on the external Pusher channel.
- * Retains the Home Assistant wire contract: only emit goal, game_start, game_end, period_start, period_end over Pusher.
- */
-export const INTERNAL_ONLY = new Set<string>(["goal_overturned", "powerplay", "penalty", "sog"]);
-
 interface EventRecord {
   at: number;
   event_id: string;
@@ -29,7 +23,7 @@ interface EventRecord {
   outcome: "delivered" | "filtered";
   /** why it was filtered, or a note on what was delivered */
   reason?: string | undefined;
-  sent: { pusher_clients: number; rest: boolean; lights: number };
+  sent: { rest: boolean; lights: number; pusher_clients?: number | undefined };
 }
 
 /** Fixed-size log of what the dispatcher did with each event; feeds the diagnostics panel. */
@@ -90,7 +84,7 @@ export class Dispatcher {
       manual: !!ev.manual,
       delay_s: ev.delay_s,
       outcome: "delivered",
-      sent: { pusher_clients: 0, rest: false, lights: 0 },
+      sent: { rest: false, lights: 0 },
     };
     const d = this.decide(ev);
     if (!d.ok) {
@@ -98,7 +92,6 @@ export class Dispatcher {
       rec.reason = d.reason;
       log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) filtered: ${d.reason}`);
     } else {
-      if (!INTERNAL_ONLY.has(ev.type)) rec.sent.pusher_clients = this.ha.publishPusher(ev);
       const { ha } = this.engine.settings;
       rec.sent.rest = ha.fire_rest_events && !!ha.url && !!ha.token;
       void this.ha.publishRest(ev).catch((err) => log.error("[ha] rest failed:", errMsg(err)));
@@ -106,7 +99,7 @@ export class Dispatcher {
         void this.ha.orchestrateGoalAudio(ev).catch((err) => log.error("[ha] goal audio failed:", errMsg(err)));
       }
       rec.sent.lights = this.lights.handle(ev);
-      log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) delivered (pusher: ${rec.sent.pusher_clients}, lights: ${rec.sent.lights}, rest: ${rec.sent.rest})`);
+      log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) delivered (lights: ${rec.sent.lights}, rest: ${rec.sent.rest})`);
     }
     this.log.add(rec);
     return rec;

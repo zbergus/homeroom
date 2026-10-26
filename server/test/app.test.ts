@@ -4,20 +4,8 @@ import { createApp, type App } from "../src/app.js";
 import { Store } from "../src/store.js";
 import type { Game, Team } from "../src/types.js";
 
-const KEY = "testkey";
 let app: App;
 let base: string;
-
-interface WsData {
-  action?: string;
-  effect?: string;
-  state?: unknown;
-  socket_id?: string;
-  request_id?: string;
-  code?: number;
-  scoring?: { label: string };
-  team?: { options: { primary_color_rgb: unknown } };
-}
 
 async function getJson<T>(path: string): Promise<T> {
   return (await (await fetch(base + path)).json()) as T;
@@ -31,7 +19,7 @@ const gameOf = (over: Partial<Game> = {}): Game => ({
 });
 
 async function boot(): Promise<void> {
-  app = await createApp({ store: new Store(":memory:"), appKey: KEY, appSecret: "testsecret", webDir: "/nonexistent", port: 0 });
+  app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0 });
   base = `http://127.0.0.1:${app.port}`;
 }
 beforeEach(boot);
@@ -43,137 +31,7 @@ afterEach(async () => {
 const json = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
   fetch(base + path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
 
-/** Minimal pysher stand-in: link, device sync, signed subscribe, collect messages. */
-async function connectIntegration(devices: unknown[] = []) {
-  const auth = { Authorization: "Bearer my-api-key" };
-  const link = (await (await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: auth, body: new URLSearchParams({ home_assistant_id: "x" }) })).json()) as Record<string, string>;
-  expect(link.success).toBe(true);
-  await json("/integrations/home-assistant/devices/sync", "POST", { devices }, auth);
 
-  const ws = new WebSocket(`ws://127.0.0.1:${app.port}/app/${KEY}?protocol=7`);
-  const msgs: { event: string; channel?: string; data: WsData }[] = [];
-  let socketId = "";
-  ws.on("message", (raw) => {
-    const m = JSON.parse(raw.toString());
-    m.data = typeof m.data === "string" ? JSON.parse(m.data) : m.data;
-    msgs.push(m);
-    if (m.event === "pusher:connection_established") socketId = m.data.socket_id;
-  });
-  await vi.waitFor(() => expect(socketId).not.toBe(""));
-
-  const subscribe = async (channel: string) => {
-    const r = await fetch(`${base}/auth/websockets`, {
-      method: "POST",
-      headers: { "x-websocket-key": link.websocket_key },
-      body: new URLSearchParams({ socket_id: socketId, channel_name: channel }),
-    });
-    expect(r.status).toBe(200);
-    const { auth: sig } = (await r.json()) as { auth: string };
-    ws.send(JSON.stringify({ event: "pusher:subscribe", data: { channel, auth: sig } }));
-    await vi.waitFor(() => expect(msgs.some((m) => m.event === "pusher_internal:subscription_succeeded" && m.channel === channel)).toBe(true));
-  };
-  await subscribe(`private-${link.unique_id}`);
-  await subscribe(`private-home-assistant.${link.integration_key}`);
-  return { ws, msgs, link, auth, socketId };
-}
-
-describe("Home Assistant integration compatibility (what pysher does)", () => {
-  it("rejects a bad signature, an unknown app key, and cross-install channels", async () => {
-    const { ws, msgs, link } = await connectIntegration();
-    ws.send(JSON.stringify({ event: "pusher:subscribe", data: { channel: `private-${link.unique_id}x`, auth: `${KEY}:00` } }));
-    await vi.waitFor(() => expect(msgs.some((m) => m.event === "pusher:error" && m.data.code === 4009)).toBe(true));
-    const other = await fetch(`${base}/auth/websockets`, { method: "POST", headers: { "x-websocket-key": link.websocket_key }, body: new URLSearchParams({ socket_id: "1.1", channel_name: "private-someone-else" }) });
-    expect(other.status).toBe(403);
-    await new Promise<void>((resolve) => {
-      const bad = new WebSocket(`ws://127.0.0.1:${app.port}/app/WRONG`);
-      bad.on("unexpected-response", (_r, res) => (expect(res.statusCode).toBe(401), resolve()));
-      bad.on("error", () => resolve());
-    });
-    ws.close();
-  });
-
-  it("a manual trigger reaches the integration (goal) and drives lights with get_state -> execute -> restore", async () => {
-    const dev = { entity_id: "light.test", capabilities: { supported_color_modes: ["hs"] }, device_class: "light", name: "Test", supports_flash_speed: true, supports_flash_duration: true, supports_alternate_speed: true, supports_alternate_duration: true };
-    const { ws, msgs, link, auth } = await connectIntegration([dev]);
-    const put = await json("/api/actions", "PUT", [{ id: "a1", enabled: true, triggers: ["goal"], team_scope: "any", entities: ["light.test"], effect: "alternate", duration: 0.5, speed: 5, colors: "team", restore: true }]);
-    expect(put.status).toBe(200);
-
-    // answer get_state like the integration does
-    ws.on("message", async (raw) => {
-      const m = JSON.parse(raw.toString());
-      if (m.event === "get_state.light.test") {
-        const d = JSON.parse(m.data);
-        await json("/requests/execute", "POST", { scope: `home-assistant.${link.integration_key}`, payload: JSON.stringify({ brightness: 200, color_mode: "hs", hs_color: [10, 50] }), request_id: d.request_id }, auth);
-      }
-    });
-
-    const res = (await (await json("/api/trigger", "POST", { trigger: "goal" })).json()) as { ok: boolean };
-    expect(res.ok).toBe(true);
-    await vi.waitFor(() => expect(msgs.some((m) => m.event === "execute.light.test" && m.data.action === "restore")).toBe(true), { timeout: 4000 });
-
-    const goal = msgs.find((m) => m.event === "goal")!;
-    expect(goal.data.scoring?.label).toBe("GOAL");
-    expect(goal.data.team?.options.primary_color_rgb).toHaveProperty("r");
-    expect(goal.data).not.toHaveProperty("already_triggered_from_score_change");
-    const order = msgs.map((m) => m.event).filter((e) => /^(get_state|execute)/.test(e));
-    expect(order).toEqual(["get_state.light.test", "execute.light.test", "execute.light.test"]);
-    expect(msgs.find((m) => m.event === "execute.light.test")!.data.action).toBe("alternate");
-
-    // an action that only wants 3-pointers must not fire for a touchdown
-    const before = msgs.length;
-    await json("/api/actions", "PUT", [{ id: "a2", enabled: true, triggers: ["basket_3"], team_scope: "any", entities: ["light.test"], effect: "flash", duration: 1, speed: 5, colors: "team", restore: false }]);
-    await json("/api/trigger", "POST", { trigger: "touchdown" });
-    await new Promise((r) => setTimeout(r, 300));
-    expect(msgs.slice(before).filter((m) => m.event.startsWith("execute"))).toHaveLength(0);
-    ws.close();
-  });
-
-  it("white-only lights get a flash instead of an alternate; colour lights keep the configured effect", async () => {
-    const white = { entity_id: "light.white", capabilities: { supported_color_modes: ["color_temp"] }, device_class: "light", name: "White" };
-    const color = { entity_id: "light.color", capabilities: { supported_color_modes: ["hs", "color_temp"] }, device_class: "light", name: "Color" };
-    const { ws, msgs } = await connectIntegration([white, color]);
-    const devs = await getJson<{ entity_id: string; supports_color: boolean }[]>("/api/devices");
-    expect(Object.fromEntries(devs.map((d) => [d.entity_id, d.supports_color]))).toEqual({ "light.white": false, "light.color": true });
-    await json("/api/actions", "PUT", [{ id: "a", enabled: true, triggers: ["any_score"], team_scope: "any", entities: ["light.white", "light.color"], effect: "alternate", duration: 1, speed: 5, colors: "team", restore: false }]);
-    await json("/api/trigger", "POST", { trigger: "goal" });
-    await vi.waitFor(() => expect(msgs.filter((m) => m.event.startsWith("execute.")).length).toBe(2));
-    expect(msgs.find((m) => m.event === "execute.light.white")!.data.action).toBe("flash");
-    expect(msgs.find((m) => m.event === "execute.light.color")!.data.action).toBe("alternate");
-    ws.close();
-  });
-
-  it("light_effect sets the light's own effect, and restores colour plus its 'none' effect afterwards", async () => {
-    const hue = { entity_id: "light.driveway", capabilities: { supported_color_modes: ["hs"], effect_list: ["None", "candle", "fire"] }, device_class: "light", name: "Driveway" };
-    const plain = { entity_id: "light.plain", capabilities: { supported_color_modes: ["hs"] }, device_class: "light", name: "Plain" };
-    const { ws, msgs, link, auth } = await connectIntegration([hue, plain]);
-    ws.on("message", async (raw) => {
-      const m = JSON.parse(raw.toString());
-      if (m.event.startsWith("get_state.")) await json("/requests/execute", "POST", { scope: `home-assistant.${link.integration_key}`, payload: JSON.stringify({ brightness: 120, color_mode: "hs", hs_color: [30, 60] }), request_id: JSON.parse(m.data).request_id }, auth);
-    });
-    expect((await json("/api/actions", "PUT", [{ id: "e", enabled: true, triggers: ["any_score"], team_scope: "any", entities: ["light.driveway", "light.plain"], effect: "light_effect", duration: 0.5, speed: 5, colors: "team", restore: true }])).status).toBe(400); // no effect name
-    expect((await json("/api/actions", "PUT", [{ id: "e", enabled: true, triggers: ["any_score"], team_scope: "any", entities: ["light.driveway", "light.plain"], effect: "light_effect", light_effect: "candle", duration: 0.5, speed: 5, colors: "team", restore: true }])).status).toBe(200);
-    await json("/api/trigger", "POST", { trigger: "goal" });
-    await vi.waitFor(() => expect(msgs.some((m) => m.event === "execute.light.driveway" && m.data.action === "restore")).toBe(true), { timeout: 4000 });
-    const drive = msgs.filter((m) => m.event === "execute.light.driveway").map((m) => m.data);
-    expect(drive[0]).toEqual({ action: "set_effect", effect: "candle" });
-    expect(drive[1].state).toMatchObject({ brightness: 120, effect: "None" });
-    // a light that does not advertise "candle" gets a plain flash instead
-    expect(msgs.find((m) => m.event === "execute.light.plain")!.data.action).toBe("flash");
-    ws.close();
-  });
-
-  it("the event log explains what happened, and /api/status shows the link", async () => {
-    const { ws } = await connectIntegration();
-    await json("/api/trigger", "POST", { trigger: "goal" });
-    const log = await getJson<{ sent: { pusher_clients: number } }[]>("/api/events/recent");
-    expect(log[0]).toMatchObject({ type: "goal", manual: true, outcome: "delivered" });
-    expect(log[0].sent.pusher_clients).toBe(1);
-    const st = await getJson<{ integration: { links: unknown[] }; warnings: string[] }>("/api/status");
-    expect(st.integration.links[0]).toMatchObject({ events_connected: true, devices_connected: true });
-    expect(st.warnings.join(" ")).toMatch(/PUBLIC_BASE_URL is not set/);
-    ws.close();
-  });
-});
 
 describe("control plane", () => {
   it("UI websocket snapshots and game updates include server clock reference timestamps", async () => {
@@ -271,9 +129,6 @@ describe("control plane", () => {
       expect((await call(path, method, body, bearer)).status, `${method} ${path} with token`).toBeLessThan(400);
     }
     expect(app.engine.settings.delay_global_s).toBe(5);
-    // the Pusher-compatible integration endpoints are not behind ADMIN_TOKEN (they have their own api/websocket keys)
-    const link = await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: "Bearer my-api-key" } });
-    expect(((await link.json()) as { success: boolean }).success).toBe(true);
   });
 
   it("POST /api/calibrate requires a unique timestamped historical clock match", async () => {

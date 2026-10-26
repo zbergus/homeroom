@@ -7,7 +7,6 @@ import { buildHttp } from "./http.js";
 import { Dispatcher } from "./outputs/dispatch.js";
 import { HaOutputs } from "./outputs/ha.js";
 import { LightRules } from "./outputs/lights.js";
-import { PusherHub } from "./outputs/pusher.js";
 import { UiHub } from "./outputs/ui.js";
 import { isCrossSite } from "./security.js";
 import { Store } from "./store.js";
@@ -15,8 +14,6 @@ import { createLogger } from "./logger.js";
 
 interface AppOptions {
   store?: Store | undefined;
-  appKey: string;
-  appSecret: string;
   webDir: string;
   /** listen on this port (0 = ephemeral); omit to build without listening */
   port?: number | undefined;
@@ -33,7 +30,6 @@ export interface App {
   store: Store;
   engine: Engine;
   poller: Poller;
-  hub: PusherHub;
   ui: UiHub;
   lights: LightRules;
   ha: HaOutputs;
@@ -48,9 +44,8 @@ export async function createApp(o: AppOptions): Promise<App> {
   const store = o.store ?? new Store();
   const engine = new Engine(store, undefined, { restoreGraceMs: config.restoreGraceMs, ...o.engineDeps });
   const poller = new Poller(engine);
-  const hub = new PusherHub(store, o.appKey, o.appSecret);
-  const lights = new LightRules(engine, hub);
-  const ha = new HaOutputs(engine, hub);
+  const lights = new LightRules(engine);
+  const ha = new HaOutputs(engine);
   const ui = new UiHub(engine);
   const dispatcher = new Dispatcher(engine, ui, ha, lights);
 
@@ -62,7 +57,7 @@ export async function createApp(o: AppOptions): Promise<App> {
   const restored = engine.restore();
   if (restored.requeued || restored.dropped) createLogger("engine").info(`restored ${restored.requeued} pending event(s), dropped ${restored.dropped} stale`);
 
-  const http = await buildHttp({ engine, poller, hub, lights, ha, dispatcher, webDir: o.webDir, horns: o.horns, config, startedAt: Date.now() });
+  const http = await buildHttp({ engine, poller, ha, dispatcher, webDir: o.webDir, horns: o.horns, config, startedAt: Date.now() });
   http.server.on("upgrade", (req, socket, head) => {
     // a web page on another site must not be able to open these sockets from a browser on this network
     if (isCrossSite(req.headers, config.allowedOrigins)) {
@@ -70,7 +65,7 @@ export async function createApp(o: AppOptions): Promise<App> {
       socket.destroy();
       return;
     }
-    if (!hub.handleUpgrade(req, socket, head) && !ui.handleUpgrade(req, socket, head)) socket.destroy();
+    if (!ui.handleUpgrade(req, socket, head)) socket.destroy();
   });
 
   let port = 0;
@@ -82,10 +77,9 @@ export async function createApp(o: AppOptions): Promise<App> {
   if (o.startPoller) poller.start();
 
   return {
-    http, store, engine, poller, hub, ui, lights, ha, dispatcher, port,
+    http, store, engine, poller, ui, lights, ha, dispatcher, port,
     async close() {
       poller.stop();
-      hub.close();
       ui.close();
       await http.close();
     },

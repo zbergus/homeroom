@@ -12,16 +12,15 @@ import { parseClock } from "./engine/calibrate.js";
 import { isTriggerId, TRIGGERS } from "./engine/triggers.js";
 import type { Dispatcher } from "./outputs/dispatch.js";
 import type { HaOutputs } from "./outputs/ha.js";
-import { supportsColor, type LightRules } from "./outputs/lights.js";
-import type { PusherHub } from "./outputs/pusher.js";
+import { supportsColor } from "./outputs/lights.js";
 import { HornService, hornWarnings } from "./audio/horns.js";
 import { findRosterPlayerName, getTeamRoster } from "./providers/roster.js";
 import { celebrationRoutes } from "./video/celebrations.js";
 import { getPreloadedTeams } from "./hockeyTeams.js";
 import { createLogger, sanitizeUrl } from "./logger.js";
 import {
-  ABBR_RE, ActionListSchema, CalibrateBodySchema, DevicesSyncSchema, ExecuteBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
-  TriggerBodySchema, WsAuthBodySchema,
+  ABBR_RE, ActionListSchema, CalibrateBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
+  TriggerBodySchema,
 } from "./schemas.js";
 import { errMsg, isCrossSite, RateLimiter, safeEq } from "./security.js";
 import { DATA_DIR, MEDIA_DIR, migrateAction } from "./store.js";
@@ -30,8 +29,6 @@ import type { Game, LightAction, Settings } from "./types.js";
 interface Deps {
   engine: Engine;
   poller: Poller;
-  hub: PusherHub;
-  lights: LightRules;
   ha: HaOutputs;
   dispatcher: Dispatcher;
   webDir: string;
@@ -59,17 +56,6 @@ function looksLikeMp3(b: Buffer): boolean {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** `payload` of POST /requests/execute: the integration sends the entity state as a JSON string (or, sometimes, an object) */
-function parsePayload(payload: string | Record<string, unknown> | undefined): Record<string, unknown> {
-  if (typeof payload !== "string") return payload ?? {};
-  try {
-    const v: unknown = JSON.parse(payload);
-    return isRecord(v) ? v : {};
-  } catch {
-    return {}; // an unreadable state is "no state", which only skips the restore
-  }
-}
-
 interface TeamRow { abbr: string; name: string; logo: string | undefined; options: unknown }
 
 const clampInt = (v: unknown, def: number, min: number, max: number): number => Math.min(max, Math.max(min, Math.trunc(Number(v)) || def));
@@ -95,7 +81,7 @@ async function sendAudio(req: FastifyRequest, reply: FastifyReply, file: string,
 }
 
 export async function buildHttp(d: Deps): Promise<FastifyInstance> {
-  const { engine, poller, hub, lights, ha, dispatcher } = d;
+  const { engine, poller, ha, dispatcher } = d;
   const store = engine.store;
   const horns = d.horns ?? new HornService({ mediaDir: MEDIA_DIR, cacheDir: path.join(DATA_DIR, "cache", "horns"), settings: () => engine.settings });
   ha.setHorns(horns);
@@ -107,11 +93,9 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   await app.register(formbody);
   await app.register(multipart, { limits: { fileSize: MAX_HORN_BYTES, files: 1 } });
 
-  // Optional shared secret for mutating control-plane calls (the integration endpoints use their own keys).
+  // Optional shared secret for mutating control-plane calls.
   const admin = config.adminToken;
   const authFailures = new RateLimiter(20, 60_000);
-  const linkAttempts = new RateLimiter(10, 60_000);
-  const integrationCalls = new RateLimiter(600, 60_000);
   const isRead = (m: string) => m === "GET" || m === "HEAD";
 
   app.addHook("onRequest", async (req) => {
@@ -186,48 +170,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     }
   });
 
-  app.addHook("onRequest", async (req, reply) => {
-    if (!/^\/(integrations|auth|requests)\//.test(req.url)) return;
-    const limiter = req.url.startsWith("/integrations/home-assistant/link") ? linkAttempts : integrationCalls;
-    if (!limiter.allow(req.ip)) return reply.code(429).send({ error: "slow down" });
-  });
-
   app.get("/healthz", async () => ({ ok: true, games: engine.games.size }));
-
-  // ================= Home Assistant integration compatibility (see SPEC §1) =================
-  app.post("/integrations/home-assistant/link", async (req) => {
-    const key = bearer(req);
-    if (!key || (config.haApiKey && !safeEq(key, config.haApiKey))) return { success: false };
-    const l = store.link(key);
-    if (!l) return { success: false };
-    return { success: true, unique_id: l.unique_id, websocket_key: l.websocket_key, integration_key: l.integration_key };
-  });
-
-  app.post("/integrations/home-assistant/devices/sync", async (req) => {
-    const key = bearer(req);
-    const l = key ? store.linkByApiKey(key) : undefined;
-    if (!l) return { success: false };
-    const body = DevicesSyncSchema.safeParse(req.body ?? {});
-    if (!body.success) return { success: false };
-    store.replaceDevices(l.integration_key, body.data.devices);
-    return { success: true };
-  });
-
-  app.post("/auth/websockets", async (req, reply) => {
-    const wsKey = req.headers["x-websocket-key"];
-    const l = typeof wsKey === "string" ? store.linkByWebsocketKey(wsKey) : undefined;
-    const { socket_id, channel_name } = WsAuthBodySchema.safeParse(req.body ?? {}).data ?? {};
-    const mine = l ? [`private-${l.unique_id}`, `private-home-assistant.${l.integration_key}`] : [];
-    if (!l || !socket_id || !channel_name || !mine.includes(channel_name)) return reply.code(403).send({ error: "forbidden" });
-    return { auth: hub.sign(socket_id, channel_name) };
-  });
-
-  app.post("/requests/execute", async (req) => {
-    const key = bearer(req);
-    if (!key || !store.linkByApiKey(key)) return { success: false };
-    const b = ExecuteBodySchema.safeParse(req.body ?? {}).data ?? {};
-    return { success: !!b.request_id && lights.receiveState(b.request_id, parsePayload(b.payload)) };
-  });
 
   // ================= control plane =================
   app.get("/api/leagues", async () => LEAGUES.map(({ id, name, sport }) => ({ id, name, sport })));
@@ -390,11 +333,6 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
 
   app.get("/api/status", async () => {
     const s = engine.settings;
-    const links = store.allLinks().map((l) => ({
-      id: l.unique_id,
-      events_connected: hub.subscribers(`private-${l.unique_id}`) > 0,
-      devices_connected: hub.subscribers(`private-home-assistant.${l.integration_key}`) > 0,
-    }));
     const devices = store.getDevices();
     const games = [...engine.games.values()];
     const hornFiles = LEAGUES.reduce((n, l) => n + (fs.existsSync(hornDir(l.id)) ? fs.readdirSync(hornDir(l.id)).filter((f) => f.endsWith(".mp3")).length : 0), 0);
@@ -402,15 +340,12 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     const audioMode = await horns.mode();
     const durations = hornFileList().map((h) => horns.durationOf(h.file)).filter((x): x is number => x !== undefined);
     const restOn = s.ha.fire_rest_events && !!s.ha.url && !!s.ha.token;
-    const pusherOn = links.some((l) => l.events_connected);
     const haConfigured = !!s.ha.url && !!s.ha.token;
     const warnings: string[] = [];
-    if (!haConfigured && !links.length) {
+    if (!haConfigured) {
       warnings.push("Home Assistant is not connected. Enter your Home Assistant URL and long-lived access token in Settings.");
-    } else if (haConfigured && devices.length === 0) {
+    } else if (devices.length === 0) {
       warnings.push("Home Assistant is connected, but no devices have been synced yet. Click 'Sync devices' in Settings → Home Assistant.");
-    } else if (!haConfigured && links.length && !pusherOn) {
-      warnings.push("A Home Assistant integration is linked but not connected right now. Check that Home Assistant can reach this server.");
     }
     if (!s.public_base_url) warnings.push("PUBLIC_BASE_URL is not set, so goal horns cannot be sent.");
     else if (/^https?:\/\/(127\.|localhost|0\.0\.0\.0)/.test(s.public_base_url)) warnings.push("PUBLIC_BASE_URL points at localhost; your speakers cannot reach that. Use this machine's LAN address.");
@@ -426,10 +361,10 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
       version: "0.2.0",
       uptime_s: Math.round((Date.now() - (d.startedAt ?? Date.now())) / 1000),
       games: { tracked: games.length, live: games.filter((g) => g.status === "in").length, synced: games.filter((g) => engine.isSynced(g.id)).length },
-      integration: { links, devices: devices.length },
+      integration: { links: [], devices: devices.length },
       providers: poller.providerRows(),
       server_time: Date.now(),
-      outputs: { rest_events: restOn, pusher_connected: pusherOn },
+      outputs: { rest_events: restOn, pusher_connected: false },
       horns: { files: hornFiles, url_check: horn },
       audio: { ffmpeg: audioMode === "ffmpeg", mode: audioMode },
       public_base_url: s.public_base_url,
@@ -521,10 +456,6 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
 
   app.post("/api/ha/sync", async () => ha.syncEntities());
   app.post("/api/ha/test", async () => ha.test());
-  app.post("/api/ha/links/clear", async () => {
-    store.clearLinks();
-    return { ok: true };
-  });
 
   // ---- horns ----
   const hornDir = (league: string) => path.join(MEDIA_DIR, "horns", league);
