@@ -24,6 +24,9 @@ export const CelebrationMediaParamsSchema = z.object({
   abbr: z.string(),
   file: z.string().endsWith(".mp4").transform((s) => s.slice(0, -4)),
 }).transform((p) => ({ league: p.league, abbr: p.abbr, player_id: p.file })).pipe(CelebrationParamsSchema);
+/** Optional display name supplied at upload/import time; single line, bounded. */
+const celebrationName = z.string().trim().max(80).refine((s) => !/[\r\n]/.test(s), "must be a single line");
+export const CelebrationUploadQuerySchema = z.object({ name: celebrationName.or(z.literal("")).optional() });
 const delay = z.number().refine(validDelay, "must be 0..120 in 0.5 steps");
 const channel = z.number().int().min(0).max(255);
 
@@ -84,6 +87,7 @@ export const SettingsPatchSchema = z.object({
 
 export const ImportCelebrationSchema = z.object({
   url: httpUrl,
+  name: celebrationName.optional(),
 });
 
 export const SyncBodySchema = z.object({

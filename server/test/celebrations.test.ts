@@ -82,6 +82,19 @@ describe("local celebration library", () => {
     expect(rows.every((r) => r.abbr === "MIN")).toBe(true);
   });
 
+  it("persists a supplied display name and prefers live roster names over it", async () => {
+    const uploadWith = (url: string) => app.inject({ method: "POST", url, headers, payload: form(mp4) });
+    await uploadWith(`${api}?name=${encodeURIComponent("Cole Caufield #13")}`);
+    expect((await app.inject("/api/celebrations")).json()).toEqual([{ league: "nhl", abbr: "MIN", player_id: "nhl:8483525", url: media, player_name: "Cole Caufield #13" }]);
+    // A sidecar must not leak as media or a row; re-uploading without a name keeps the stored one.
+    expect((await app.inject(`${media}x`)).statusCode).toBe(404);
+    expect((await app.inject(media)).rawPayload).toEqual(mp4);
+    await uploadWith(api);
+    expect((await app.inject("/api/celebrations")).json()).toEqual([{ league: "nhl", abbr: "MIN", player_id: "nhl:8483525", url: media, player_name: "Cole Caufield #13" }]);
+    await app.inject({ method: "DELETE", url: api });
+    expect((await app.inject("/api/celebrations")).json()).toEqual([]);
+  });
+
   it("rejects bad assignments and traversal for mutation and media", async () => {
     for (const suffix of ["bad/MIN/default", "nhl/TOOLONGABC/default", "nhl/MIN/123", "nhl/MIN/nhl:abc", "nhl/MIN/nhl:-1", "nhl/MIN/%2e%2e%2fescape", "nhl/%2e%2e/default", "nhl/MIN/default%00"]) {
       expect([400, 404]).toContain((await upload(mp4, `/api/celebrations/${suffix}`)).statusCode);

@@ -76,14 +76,15 @@ export const api = {
     await req("DELETE", `/api/horns/${encodeURIComponent(league)}/${encodeURIComponent(abbr)}`);
   },
   celebrations: async () => arr<CelebrationVideo>(await call("GET", "/api/celebrations"), "celebrations"),
-  uploadCelebration: async (league: string, abbr: string, playerId: string, file: File) => {
+  uploadCelebration: async (league: string, abbr: string, playerId: string, file: File, name?: string) => {
     if (isMockUrl()) return (await import("./mockApi")).mockUploadCelebration(league, abbr, playerId, file);
     const f = new FormData(); f.append("file", file);
-    await req("POST", celebrationPath(league, abbr, playerId), undefined, f);
+    const q = name ? `?name=${encodeURIComponent(name)}` : "";
+    await req("POST", `${celebrationPath(league, abbr, playerId)}${q}`, undefined, f);
   },
-  importCelebration: async (league: string, abbr: string, playerId: string, url: string) => {
+  importCelebration: async (league: string, abbr: string, playerId: string, url: string, name?: string) => {
     if (isMockUrl()) return (await import("./mockApi")).mockImportCelebration(league, abbr, playerId, url);
-    await req("POST", `${celebrationPath(league, abbr, playerId)}/import`, { url });
+    await req("POST", `${celebrationPath(league, abbr, playerId)}/import`, { url, ...(name ? { name } : {}) });
   },
   deleteCelebration: async (v: CelebrationVideo) => {
     if (isMockUrl()) return (await import("./mockApi")).mockDeleteCelebration(v);

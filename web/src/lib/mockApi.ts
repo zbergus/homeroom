@@ -59,6 +59,7 @@ function mock<T>(method: string, path: string, body?: unknown): T {
   if (p === "/api/events/recent") return [] as T;
   if (p === "/api/games/raw") return (mockSchedule().days[0]?.games ?? []) as T;
   if (p === "/api/trigger") return { ok: true, event: { type: "goal", natural_text: "Goal, City Wild! Test Player scores. Wild 1, Blue Jackets 0." } } as T;
+  if (p === "/api/test/tts") return { ok: true, message: "Homeroom audio test. Goal, Montreal Canadiens!", player: "media_player.mock" } as T;
   if (p === "/api/simulation") return { active: false } as T;
   if (p === "/api/simulation/start") return { active: true, game_id: "nhl:sim", ends_at: Date.now() + 600_000 } as T;
   if (p === "/api/simulation/stop") return { active: false } as T;
@@ -83,14 +84,14 @@ export function mockDeleteHorn(league: string, abbr: string): void {
   mem.horns = mem.horns.filter((h) => !(h.league === league && h.abbr === abbr));
 }
 
-export function mockUploadCelebration(league: string, abbr: string, playerId: string, file: File): void {
+export function mockUploadCelebration(league: string, abbr: string, playerId: string, file: File, name?: string): void {
   mockDeleteCelebration({ league, abbr, player_id: playerId, url: "" });
-  mem.celebrations.push({ league, abbr, player_id: playerId, url: URL.createObjectURL(file) });
+  mem.celebrations.push({ league, abbr, player_id: playerId, url: URL.createObjectURL(file), ...(name ? { player_name: name } : {}) });
 }
 
-export function mockImportCelebration(league: string, abbr: string, playerId: string, url: string): void {
+export function mockImportCelebration(league: string, abbr: string, playerId: string, url: string, name?: string): void {
   mockDeleteCelebration({ league, abbr, player_id: playerId, url: "" });
-  mem.celebrations.push({ league, abbr, player_id: playerId, url });
+  mem.celebrations.push({ league, abbr, player_id: playerId, url, ...(name ? { player_name: name } : {}) });
 }
 
 export function mockDeleteCelebration(v: CelebrationVideo): void {

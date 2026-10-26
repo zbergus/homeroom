@@ -94,6 +94,8 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
   const selectedId = isCustom ? customId.trim() : playerId.trim();
   const assignment = selectedId || "default";
   const validPlayer = assignment === "default" || /^(?:nhl|espn|iihf|ahl):\d{1,12}$/.test(assignment);
+  const selectedName = players.find((p) => p.id === selectedId);
+  const knownName = selectedName ? selectedName.name + (selectedName.number ? ` #${selectedName.number}` : "") : undefined;
 
   const upload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,13 +105,13 @@ export default function CelebrationManager({ leagues, games }: { leagues: string
     setBusy(true);
     try {
       if (cleanUrl) {
-        await api.importCelebration(league, abbr, assignment, cleanUrl);
+        await api.importCelebration(league, abbr, assignment, cleanUrl, knownName);
         setUrl("");
       } else if (file) {
         if (!/\.mp4$/i.test(file.name) || file.size > MAX_VIDEO_BYTES) {
           setErr("Choose an MP4 file no larger than 50 MiB."); setBusy(false); return;
         }
-        await api.uploadCelebration(league, abbr, assignment, file);
+        await api.uploadCelebration(league, abbr, assignment, file, knownName);
         setFile(null);
         if (fileRef.current) fileRef.current.value = "";
       }

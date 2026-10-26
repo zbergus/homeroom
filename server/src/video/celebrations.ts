@@ -5,7 +5,7 @@ import { pipeline } from "node:stream/promises";
 import fastifyStatic from "@fastify/static";
 import type { FastifyPluginAsync } from "fastify";
 import { LEAGUES } from "../leagues.js";
-import { CelebrationMediaParamsSchema, CelebrationParamsSchema, ImportCelebrationSchema } from "../schemas.js";
+import { CelebrationMediaParamsSchema, CelebrationParamsSchema, CelebrationUploadQuerySchema, ImportCelebrationSchema } from "../schemas.js";
 
 export const MAX_CELEBRATION_BYTES = 50 * 1024 * 1024;
 
@@ -42,7 +42,30 @@ export function isPrivateHost(hostname: string): boolean {
 
 type Assignment = { league: string; abbr: string; player_id: string };
 const relativeFile = (p: Assignment) => path.join(p.league, p.abbr, `${p.player_id}.mp4`);
+const sidecarFile = (p: Assignment) => path.join(p.league, p.abbr, `${p.player_id}.json`);
 const urlFor = (p: Assignment) => `/media/celebrations/${[p.league, p.abbr, `${p.player_id}.mp4`].map(encodeURIComponent).join("/")}`;
+
+/** Persist the resolved display name next to the video so the UI never has to know the roster. */
+async function saveSidecar(root: string, p: Assignment, name: string): Promise<void> {
+  try {
+    const target = path.join(root, sidecarFile(p));
+    const pending = path.join(path.dirname(target), `.${randomUUID()}.tmp`);
+    await fs.promises.writeFile(pending, JSON.stringify({ name: name.trim().slice(0, 80) }), { mode: 0o600 });
+    await fs.promises.rename(pending, target);
+  } catch { /* best effort: a missing sidecar only costs the display name */ }
+}
+
+async function sidecarName(root: string, p: Assignment): Promise<string | undefined> {
+  try {
+    const raw = JSON.parse(await fs.promises.readFile(path.join(root, sidecarFile(p)), "utf8")) as { name?: unknown };
+    return optString(raw.name);
+  } catch { return undefined; }
+}
+
+/** Names must be single-line, bounded plain strings. */
+function optString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() && v.length <= 81 && !/[\r\n]/.test(v) ? v.trim() : undefined;
+}
 
 /** Reject symlinks at every component, including the library root. */
 async function directory(dir: string, create = false): Promise<boolean> {
@@ -100,7 +123,7 @@ export const celebrationRoutes: FastifyPluginAsync<{
           if (!f.isFile()) continue;
           const p = CelebrationMediaParamsSchema.safeParse({ league: l.id, abbr: entry.name, file: f.name });
           if (!p.success || p.data.abbr !== entry.name || !await isMp4(path.join(dir, f.name))) continue;
-          const name = options.findPlayerName?.(p.data.league, p.data.abbr, p.data.player_id);
+          const name = options.findPlayerName?.(p.data.league, p.data.abbr, p.data.player_id) ?? await sidecarName(root, p.data);
           out.push({ ...p.data, url: urlFor(p.data), ...(name ? { player_name: name } : {}) });
         };
       }
@@ -113,6 +136,8 @@ export const celebrationRoutes: FastifyPluginAsync<{
     if (!parsed.success) return reply.code(400).send({ error: "bad league/abbr/player_id" });
     const p = parsed.data;
     if (!await assignmentDir(root, p, true)) return reply.code(400).send({ error: "invalid library directory" });
+    const query = CelebrationUploadQuerySchema.safeParse(req.query);
+    const queryName = query.success ? query.data.name?.trim() || undefined : undefined;
     const target = path.join(root, relativeFile(p));
     const pending = path.join(path.dirname(target), `.${randomUUID()}.upload`);
     let uploaded = false;
@@ -143,6 +168,8 @@ export const celebrationRoutes: FastifyPluginAsync<{
       if (!await isMp4(pending)) return reply.code(415).send({ error: "not an MP4 file" });
       const size = (await fs.promises.stat(pending)).size;
       await fs.promises.rename(pending, target);
+      const name = queryName ?? options.findPlayerName?.(p.league, p.abbr, p.player_id);
+      if (name) await saveSidecar(root, p, name);
       return { ok: true, size };
     } finally { await fs.promises.rm(pending, { force: true }); }
   });
@@ -213,6 +240,8 @@ export const celebrationRoutes: FastifyPluginAsync<{
       }
 
       await fs.promises.rename(pending, target);
+      const name = bodyParsed.data.name?.trim() ?? options.findPlayerName?.(p.league, p.abbr, p.player_id);
+      if (name) await saveSidecar(root, p, name);
       return { ok: true, size: written };
     } catch (e) {
       return reply.code(502).send({ error: `download failed: ${(e as Error).message}` });
@@ -224,7 +253,10 @@ export const celebrationRoutes: FastifyPluginAsync<{
   app.delete("/api/celebrations/:league/:abbr/:player_id", async (req, reply) => {
     const parsed = CelebrationParamsSchema.safeParse(req.params);
     if (!parsed.success) return reply.code(400).send({ error: "bad league/abbr/player_id" });
-    if (await assignmentDir(root, parsed.data)) await fs.promises.rm(path.join(root, relativeFile(parsed.data)), { force: true });
+    if (await assignmentDir(root, parsed.data)) {
+      await fs.promises.rm(path.join(root, relativeFile(parsed.data)), { force: true });
+      await fs.promises.rm(path.join(root, sidecarFile(parsed.data)), { force: true });
+    }
     return { ok: true };
   });
 
