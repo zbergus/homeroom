@@ -120,7 +120,24 @@ export async function scanTvClock(
   snapAnchor: number,
   onProgress?: (progress: number) => void,
 ): Promise<ScanResult> {
-  const { createWorker, PSM } = await import("tesseract.js");
+  let createWorker: typeof import("tesseract.js").createWorker;
+  let PSM: typeof import("tesseract.js").PSM;
+  try {
+    const mod = await import("tesseract.js");
+    createWorker = mod.createWorker;
+    PSM = mod.PSM;
+  } catch (err) {
+    if (
+      String(err).includes("MIME type")
+      || String(err).includes("Failed to fetch dynamically imported module")
+      || String(err).includes("Importing a module script failed")
+    ) {
+      window.location.reload();
+      throw new Error("Dashboard updated. Please tap Scan TV again.");
+    }
+    throw err;
+  }
+
   const canvas = await prepareCanvas(file);
 
   const worker = await createWorker("eng", 1, {
