@@ -149,6 +149,9 @@ export class Store {
   allLinks(): LinkRow[] {
     return this.db.prepare("SELECT * FROM links").all() as unknown as LinkRow[];
   }
+  clearLinks(): void {
+    this.db.exec("DELETE FROM links");
+  }
 
   // ---- devices synced from HA
   replaceDevices(integrationKey: string, devices: Record<string, unknown>[]): void {

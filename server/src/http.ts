@@ -434,6 +434,15 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
       audio: { ffmpeg: audioMode === "ffmpeg", mode: audioMode },
       public_base_url: s.public_base_url,
       flags: { my_team_only: s.my_team_only, automations_enabled: s.automations_enabled, auto_sync_favorites: s.auto_sync_favorites },
+      ha: {
+        configured: haConfigured,
+        url: s.ha.url ? s.ha.url.replace(/\/\/.*@/, "//") : "",
+        rest_events: restOn,
+        devices_count: devices.length,
+        lights_count: devices.filter((dev) => dev.device_class === "light").length,
+        speakers_count: devices.filter((dev) => dev.device_class === "media_player").length,
+        tts_count: devices.filter((dev) => dev.device_class === "tts").length,
+      },
       simulation: engine.simulationStatus(),
       warnings,
     };
@@ -512,6 +521,10 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
 
   app.post("/api/ha/sync", async () => ha.syncEntities());
   app.post("/api/ha/test", async () => ha.test());
+  app.post("/api/ha/links/clear", async () => {
+    store.clearLinks();
+    return { ok: true };
+  });
 
   // ---- horns ----
   const hornDir = (league: string) => path.join(MEDIA_DIR, "horns", league);

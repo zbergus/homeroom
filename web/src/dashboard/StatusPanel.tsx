@@ -115,6 +115,34 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
   const [expanded, setExpanded] = useState(false);
   const events = usePoll(() => api.recentEvents(50), 5000, active && expanded);
   const [copied, setCopied] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [haMsg, setHaMsg] = useState<string | null>(null);
+
+  const triggerSync = async () => {
+    setSyncing(true);
+    setHaMsg(null);
+    try {
+      const res = await api.haSync();
+      if (res.ok) {
+        setHaMsg(`Synced ${res.lights} lights, ${res.media_players} speakers, and ${res.tts_engines} TTS.`);
+      } else {
+        setHaMsg(res.error || "Sync failed");
+      }
+    } catch {
+      setHaMsg("Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clearLegacyLinks = async () => {
+    try {
+      await api.clearHaLinks();
+    } catch {
+      // ignore
+    }
+  };
+
   const s = status.data;
   const now = useNow();
 
@@ -174,7 +202,7 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
               <strong>{s.games.live}</strong> live / <strong>{s.games.tracked}</strong> tracked
             </span>
             <span className="rounded bg-black/40 px-2 py-1">
-              HA integration: <strong>{s.outputs.pusher_connected ? "connected" : "standby"}</strong>
+              HA: <strong>{s.ha?.configured ? `${s.ha.devices_count} devices synced` : s.outputs.pusher_connected ? "pusher active" : "not connected"}</strong>
             </span>
             <span className="rounded bg-black/40 px-2 py-1">
               Horns: <strong>{s.horns.files}</strong> installed
@@ -208,17 +236,46 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl bg-ink-900 p-3">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Integration Links</h3>
-              {s.integration.links.length === 0 && <p className="text-xs text-slate-400">No HA integration connected yet.</p>}
-              <ul className="flex flex-col gap-2">{s.integration.links.map((l) => (
-                <li key={l.id} className="text-xs">
-                  <div className="truncate font-mono text-slate-400" title={l.id}>{l.id}</div>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    <Badge ok={l.events_connected}>events {l.events_connected ? "connected" : "offline"}</Badge>
-                    <Badge ok={l.devices_connected}>devices {l.devices_connected ? "connected" : "offline"}</Badge>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Home Assistant</h3>
+                {s.ha?.configured && (
+                  <button
+                    type="button"
+                    onClick={() => void triggerSync()}
+                    disabled={syncing}
+                    className="rounded bg-white/10 px-2 py-0.5 text-xs font-semibold text-slate-200 hover:bg-white/20 disabled:opacity-50"
+                  >
+                    {syncing ? "Syncing..." : "Sync"}
+                  </button>
+                )}
+              </div>
+              {s.ha?.configured ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge ok={true}>Direct REST</Badge>
+                    <Badge ok={s.ha.lights_count > 0}>{s.ha.lights_count} light{s.ha.lights_count === 1 ? "" : "s"}</Badge>
+                    <Badge ok={s.ha.speakers_count > 0}>{s.ha.speakers_count} speaker{s.ha.speakers_count === 1 ? "" : "s"}</Badge>
                   </div>
-                </li>
-              ))}</ul>
+                  <p className="truncate font-mono text-xs text-slate-400" title={s.ha.url}>{s.ha.url}</p>
+                  {haMsg && <p className="text-xs text-emerald-400">{haMsg}</p>}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Not configured. Enter HA URL and token in Settings.</p>
+              )}
+              {s.integration.links.length > 0 && (
+                <div className="mt-3 border-t border-white/5 pt-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>Legacy links ({s.integration.links.length})</span>
+                    <button
+                      type="button"
+                      onClick={() => void clearLegacyLinks()}
+                      className="text-amber-400 hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="rounded-xl bg-ink-900 p-3">
               <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Audio Server</h3>
@@ -229,10 +286,10 @@ export default function StatusPanel({ status, active, forceExpand }: { status: P
               <p className="mt-2 break-words text-xs text-slate-400">{s.horns.url_check.detail}</p>
             </div>
             <div className="rounded-xl bg-ink-900 p-3">
-              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Automation Flags</h3>
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Automations & Output</h3>
               <div className="flex flex-wrap gap-1.5">
-                <Badge ok={s.outputs.pusher_connected}>HA Pusher {s.outputs.pusher_connected ? "active" : "standby"}</Badge>
-                <Badge ok={s.outputs.rest_events ? true : null}>REST {s.outputs.rest_events ? "enabled" : "disabled"}</Badge>
+                <Badge ok={s.ha?.configured ?? false}>Direct REST {s.ha?.configured ? "ready" : "standby"}</Badge>
+                <Badge ok={s.ha?.rest_events ? true : null}>Event Bus {s.ha?.rest_events ? "enabled" : "off"}</Badge>
               </div>
               <p className="mt-2 text-xs text-slate-400">
                 My team only: <strong>{s.flags.my_team_only ? "yes" : "no"}</strong> · Automations: <strong>{s.flags.automations_enabled ? "enabled" : "disabled"}</strong>

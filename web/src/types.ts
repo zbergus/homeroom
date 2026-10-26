@@ -338,6 +338,15 @@ export interface Status {
   uptime_s: number;
   games: { tracked: number; live: number; synced: number };
   integration: { links: { id: string; events_connected: boolean; devices_connected: boolean }[]; devices: number };
+  ha?: {
+    configured: boolean;
+    url: string;
+    rest_events: boolean;
+    devices_count: number;
+    lights_count: number;
+    speakers_count: number;
+    tts_count: number;
+  } | undefined;
   outputs: { rest_events: boolean; pusher_connected: boolean };
   horns: { files: number; url_check: { ok: boolean | null; detail: string } };
   audio?: { ffmpeg: boolean; mode: "ffmpeg" | "truncate-only" };
