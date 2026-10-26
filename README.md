@@ -5,8 +5,7 @@ detects game starts, period changes, goals, power plays, intermissions, and game
 It also serves real-time TV views (hockey scoreboard with intermission statistics, compact broadcast plate scorebug with live SOG and skater strength badges, multiview grid, arena ticker) and a local control dashboard.
 
 ```
-NHL / ESPN / AHL feeds ──► Engine (state machine) ──► Stream-sync delay buffer (0–120 s) ──┬─► Home Assistant REST events (homeroom_goal, …)
-                                                                                           ├─► Pusher-compatible WebSocket (/app/<key>)
+NHL / ESPN / AHL feeds ──► Engine (state machine) ──► Stream-sync delay buffer (0–120 s) ──┬─► Home Assistant REST (lights, horns, TTS & events)
                                                                                            └─► UI WebSocket ─► /  /scoreboard  /plate  /grid  /ticker
 ```
 
@@ -39,12 +38,12 @@ Persistent data is stored in `./data` (SQLite database) and `./media` (goal horn
 
 ## Home Assistant Integration
 
-Homeroom integrates seamlessly with Home Assistant without requiring third-party cloud services. Full setup instructions are documented in [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md).
+Homeroom integrates seamlessly with Home Assistant without requiring third-party cloud services or custom components. Full setup instructions are documented in [`docs/HOME_ASSISTANT.md`](docs/HOME_ASSISTANT.md).
 
 1. In Homeroom's Dashboard under **Settings → Home Assistant**, enter your Home Assistant local URL and a long-lived access token.
-2. Enable **Fire REST events**.
-3. Homeroom posts native events (`homeroom_goal`, `homeroom_game_start`, `homeroom_game_end`, `homeroom_period_start`, `homeroom_period_end`, `homeroom_goal_overturned`) directly to Home Assistant.
-4. Set up standard Home Assistant automations triggering on `platform: event, event_type: homeroom_goal`.
+2. Homeroom auto-discovers your lights, media players, and TTS engines.
+3. Configure your lights, smart speakers, volume boost, and TTS announcements directly in Homeroom.
+4. (Optional) Enable **Fire REST events** if you want to trigger custom Home Assistant automations on `platform: event, event_type: homeroom_goal`.
 
 ## Key Features
 

@@ -3,14 +3,14 @@ import WebSocket from "ws";
 import { createApp, type App } from "../src/app.js";
 import { type Config, loadConfig, securityNotes } from "../src/config.js";
 import { errMsg, isCrossSite, RateLimiter, safeEq } from "../src/security.js";
-import { MAX_LINKS, Store } from "../src/store.js";
+import { Store } from "../src/store.js";
 
 let app: App | undefined;
 let base = "";
 
 async function boot(over: Partial<Config> = {}): Promise<App> {
   const config = { ...loadConfig({}), ...over };
-  app = await createApp({ store: new Store(":memory:"), appKey: "k", appSecret: "s", webDir: "/nonexistent", port: 0, config });
+  app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0, config });
   base = `http://127.0.0.1:${app.port}`;
   return app;
 }
@@ -58,9 +58,6 @@ describe("cross-site requests", () => {
     expect(form.status).toBe(415);
     const text = await fetch(`${base}/api/trigger`, { method: "POST", headers: { "content-type": "text/plain" }, body: '{"trigger":"goal"}' });
     expect(text.status).toBe(415);
-    // the integration routes keep taking form bodies, as the Home Assistant integration sends them
-    const link = await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: "Bearer k1" }, body: new URLSearchParams({ a: "b" }) });
-    expect(((await link.json()) as { success: boolean }).success).toBe(true);
   });
 });
 
@@ -109,31 +106,6 @@ describe("settings boundary", () => {
   });
 });
 
-describe("integration endpoints", () => {
-  it("caps how many installs can link, and says no past the cap", async () => {
-    await boot();
-    for (let i = 0; i < MAX_LINKS; i++) app!.store.link(`key-${i}`);
-    const r = await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: "Bearer one-too-many" } });
-    expect(((await r.json()) as { success: boolean }).success).toBe(false);
-    const again = await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: "Bearer key-0" } });
-    expect(((await again.json()) as { success: boolean }).success).toBe(true); // an existing install can always re-link
-  });
-
-  it("only links the configured HOMEROOM_API_KEY when one is set", async () => {
-    await boot({ haApiKey: "right" });
-    const link = (k: string) => fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: `Bearer ${k}` } }).then((r) => r.json() as Promise<{ success: boolean }>);
-    expect((await link("wrong")).success).toBe(false);
-    expect((await link("right")).success).toBe(true);
-  });
-
-  it("rate-limits link attempts per client", async () => {
-    await boot();
-    const codes: number[] = [];
-    for (let i = 0; i < 12; i++) codes.push((await fetch(`${base}/integrations/home-assistant/link`, { method: "POST", headers: { authorization: `Bearer k${i}` } })).status);
-    expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true);
-    expect(codes.slice(10)).toEqual([429, 429]);
-  });
-});
 
 describe("admin token", () => {
   it("locks a client out after repeated wrong tokens", async () => {
@@ -149,9 +121,9 @@ describe("admin token", () => {
     const st = (await (await fetch(`${base}/api/status`)).json()) as { warnings: string[] };
     expect(st.warnings.join(" ")).toMatch(/ADMIN_TOKEN is not set/);
     await app!.close();
-    await boot({ adminToken: "tok", haApiKey: "k", appSecret: "not-the-default" });
+    await boot({ adminToken: "tok" });
     const quiet = (await (await fetch(`${base}/api/status`)).json()) as { warnings: string[] };
-    expect(quiet.warnings.join(" ")).not.toMatch(/ADMIN_TOKEN|HOMEROOM_API_KEY|PUSHER_APP_SECRET/);
+    expect(quiet.warnings.join(" ")).not.toMatch(/ADMIN_TOKEN/);
   });
 });
 
@@ -167,7 +139,6 @@ describe("websockets", () => {
 
   it("closes a connection that sends an oversized frame (1009) instead of buffering it", async () => {
     await boot();
-    expect(await closeCodeAfter("/app/k", Buffer.alloc(64 * 1024, 0x61))).toBe(1009);
     expect(await closeCodeAfter("/ws", Buffer.alloc(64 * 1024, 0x61))).toBe(1009);
   });
 });
@@ -214,6 +185,6 @@ describe("helpers", () => {
     expect(c).toMatchObject({ adminToken: undefined, port: 8080, allowedOrigins: ["dev:5173", "b:1"] });
     expect(() => loadConfig({ PORT: "eighty" })).toThrow(/invalid environment: PORT/);
     expect(() => loadConfig({ LOG_LEVEL: "loud" })).toThrow(/LOG_LEVEL/);
-    expect(securityNotes(loadConfig({}))).toHaveLength(3);
+    expect(securityNotes(loadConfig({}))).toHaveLength(1);
   });
 });

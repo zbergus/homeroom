@@ -10,14 +10,14 @@ It does **not** need custom device connectors: Home Assistant owns smart home de
 
 ## Repo map
 ```
-server/   Node 22 + TypeScript (Fastify, ws, node:sqlite)   the engine, APIs, Pusher-compatible bridge
+server/   Node 22 + TypeScript (Fastify, ws, node:sqlite)   the engine, APIs, TV display WebSocket
 web/      Vite + React + Tailwind                           dashboard + TV views (dark mode only)
-scripts/  e2e_pysher.py, fetch-horns.mjs, make-default-horn.sh
+scripts/  fetch-horns.mjs, make-default-horn.sh
 docs/     ARCHITECTURE / HOME_ASSISTANT / DEVELOPMENT / DEPLOYMENT, research/ (reference screenshots, see its README)
 deploy/   Arcane compose + .env template (pulls the image CI publishes to GHCR; .github/workflows/ci.yml builds it)
 data/ media/   runtime volumes (SQLite, goal horns); git-ignored contents
 ```
-Key server files: `engine/engine.ts` (state, diff, events, delay), `engine/poller.ts` (adaptive polling), `engine/triggers.ts`, `outputs/dispatch.ts` (the one gate before any automation output), `outputs/pusher.ts` (Pusher protocol server), `outputs/lights.ts`, `providers/{espn,nhl,boxscore,insight}.ts`, `http.ts` (all routes), `app.ts` (wiring; tests build the whole app with it), `store.ts` (SQLite + settings).
+Key server files: `engine/engine.ts` (state, diff, events, delay), `engine/poller.ts` (adaptive polling), `engine/triggers.ts`, `outputs/dispatch.ts` (the one gate before any automation output), `outputs/ha.ts` (Home Assistant REST output), `outputs/lights.ts`, `providers/{espn,nhl,boxscore,insight}.ts`, `http.ts` (all routes), `app.ts` (wiring; tests build the whole app with it), `store.ts` (SQLite + settings).
 
 ## Commands
 ```bash
@@ -25,13 +25,12 @@ cd server && npm install && npm test          # vitest; must stay green
 cd server && npm run typecheck && npm run dev # :8080 (set PORT, DATA_DIR, MEDIA_DIR, WEB_DIR for throw-away runs)
 cd web && npm install && npx tsc --noEmit && npm run build   # `?mock=1` on any view runs without a backend
 docker compose up -d --build                  # packaged stack
-python3 scripts/e2e_pysher.py --base http://127.0.0.1:8080 --key <PUSHER_APP_KEY>   # real pysher client (needs a venv with pysher==1.0.8 httpx)
 node scripts/fetch-horns.mjs --dry-run        # verify the horn manifest URLs (NHL only); drop --dry-run to import
 ```
-Always finish a change with: server `npm run typecheck && npm run lint && npx vitest run` (typecheck covers `src` and `test`; lint is Biome, run from the repo root config), web `npx tsc --noEmit && npm run build`. Both packages compile with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (domain DTOs declare optional fields as `x?: T | undefined`, since they are JSON where absent and undefined are the same). `any` is only allowed through `providers/raw.ts` (`Raw`); the linter rejects it everywhere else. If `npm run lint` reports "nested root configuration", a git worktree under `.claude/worktrees/` is still checked out inside the repo; `git worktree remove` it. For wire-level changes also run the pysher e2e. For UI changes, look at real screenshots (see DEVELOPMENT.md).
+Always finish a change with: server `npm run typecheck && npm run lint && npx vitest run` (typecheck covers `src` and `test`; lint is Biome, run from the repo root config), web `npx tsc --noEmit && npm run build`. Both packages compile with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (domain DTOs declare optional fields as `x?: T | undefined`, since they are JSON where absent and undefined are the same). `any` is only allowed through `providers/raw.ts` (`Raw`); the linter rejects it everywhere else. If `npm run lint` reports "nested root configuration", a git worktree under `.claude/worktrees/` is still checked out inside the repo; `git worktree remove` it. For UI changes, look at real screenshots (see DEVELOPMENT.md).
 
 ## Invariants: do not break these
-1. **The HA integration contract is fixed** (`SPEC.md` §1). The unmodified upstream integration only understands five events: `goal`, `game_start`, `game_end`, `period_start`, `period_end`, delivered over Pusher as `{event, channel, data:<JSON string>}`. Richer ideas are **internal triggers/filters** (ppg, shg, eng, win…) or **UI/REST/light-only events** (`goal_overturned`, `powerplay`, `penalty`, `sog`; see `INTERNAL_ONLY` in `outputs/dispatch.ts`), never new Pusher events. Never send `already_triggered_from_score_change` (upstream crashes on it). `goal_horn` must follow `goal` within ~3 s or the integration speaks TTS first.
+1. **Home Assistant integration is direct REST** (`docs/HOME_ASSISTANT.md`). Homeroom calls HA REST APIs directly (`/api/services/light/*`, `/api/services/media_player/*`, `/api/services/tts/*`, and `/api/events/homeroom_<type>`). No third-party websocket bridges or Pusher emulators are needed.
 2. **Everything a viewer or automation could be spoiled by goes through the delay buffer** (`engine/delay.ts`, 0–120 s, 0.5 s steps, per game > per league > global, release order never goes backwards per game). Only *manual* events (buttons, test) are immediate by default. `/api/games/raw` is the one undelayed view and is **control-plane only**: never feed it to a TV view.
 3. **One gate for automation output**: `Dispatcher.handle` (`outputs/dispatch.ts`). It applies `automations_enabled` and `my_team_only`; the TV UI always sees every event. Manual events bypass the gates. Every event is recorded in the event log with an outcome and reason; keep it that way (the diagnostics panel depends on it).
 4. **First sight of a game seeds state silently** (no replayed goals); score *decreases* never fire events; a drop shortly after an announced goal may produce a UI/REST-only `goal_overturned` after a 20 s confirm window. `Engine.commit` works on a copy of its input; do not mutate caller objects.

@@ -6,9 +6,9 @@ const log = createLogger("homeroom");
 const config = loadConfig();
 for (const note of securityNotes(config)) log.warn(note);
 
-const app = await createApp({ appKey: config.appKey, appSecret: config.appSecret, webDir: config.webDir, port: config.port, startPoller: true, config });
+const app = await createApp({ webDir: config.webDir, port: config.port, startPoller: true, config });
 if (config.logLevel !== "silent") {
-  console.log(`[homeroom] listening on :${app.port} (pusher app key: ${config.appKey})`);
+  console.log(`[homeroom] listening on :${app.port}`);
   console.log(`[homeroom] web root: ${config.webDir}`);
   console.log(`[homeroom] log level: ${config.logLevel}`);
 }

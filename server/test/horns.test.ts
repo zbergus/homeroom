@@ -177,7 +177,7 @@ beforeEach(async () => {
   failProcessing = false;
   ffmpegPresent = true;
   const horns = new HornService({ mediaDir: MEDIA_DIR, cacheDir: cache, settings: () => settings, runner: fakeRunner, log: () => {} });
-  app = await createApp({ store: new Store(":memory:"), appKey: "k", appSecret: "s", webDir: "/nonexistent", port: 0, horns });
+  app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0, horns });
   base = `http://127.0.0.1:${app.port}`;
 });
 afterEach(async () => {

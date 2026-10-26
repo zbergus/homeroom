@@ -59,7 +59,6 @@ export const api = {
   calibrate: (b: { game_id: string; tv_period: number; tv_clock: string; elapsed_ms?: number | undefined }) => call<Calibration>("POST", "/api/calibrate", b),
   haTest: () => call<{ ok?: boolean | undefined; success?: boolean | undefined; message?: string | undefined; error?: string | undefined; sync?: { lights: number; media_players: number; tts_engines: number } | undefined }>("POST", "/api/ha/test"),
   haSync: () => call<{ ok: boolean; lights: number; media_players: number; tts_engines: number; error?: string | undefined }>("POST", "/api/ha/sync"),
-  clearHaLinks: () => call<{ ok: boolean }>("POST", "/api/ha/links/clear"),
   entities: () => call<{ lights: Device[]; media_players: Device[]; tts_engines: Device[] }>("GET", "/api/entities"),
   teams: async (league: string) => arr<TeamInfo>(await call("GET", `/api/teams/${encodeURIComponent(league)}`), "teams"),
   roster: async (league: string, abbr: string) => arr<RosterPlayer>(await call("GET", `/api/teams/${encodeURIComponent(league)}/${encodeURIComponent(abbr)}/roster`), "players"),

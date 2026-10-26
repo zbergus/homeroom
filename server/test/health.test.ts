@@ -72,7 +72,7 @@ describe("GET /api/status providers", () => {
   });
 
   it("lists providers and warns when a live league's feed keeps failing", async () => {
-    app = await createApp({ store: new Store(":memory:"), appKey: "k", appSecret: "s", webDir: "/nonexistent", port: 0 });
+    app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0 });
     const base = `http://127.0.0.1:${app.port}`;
     app.engine.settings.grid_leagues.push("nhl");
     app.engine.ingestEspn(live());

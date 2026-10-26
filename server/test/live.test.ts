@@ -6,7 +6,6 @@ import { matchNhl, normalizeNhl, parsePbp } from "../src/providers/nhl.js";
 import { parseSituation, strengthFromSituation } from "../src/providers/strength.js";
 import { diffGame } from "../src/engine/diff.js";
 import { matchesAny, triggersFor } from "../src/engine/triggers.js";
-import { INTERNAL_ONLY } from "../src/outputs/dispatch.js";
 import type { Game, Team } from "../src/types.js";
 
 const fx = (name: string) => JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8"));
@@ -219,10 +218,6 @@ describe("Hockey situation feed and trigger validation", () => {
   });
 
   it("triggers and internal dispatching rules handle hockey powerplay and goals properly", () => {
-    expect(INTERNAL_ONLY.has("powerplay")).toBe(true);
-    expect(INTERNAL_ONLY.has("penalty")).toBe(true);
-    expect(INTERNAL_ONLY.has("sog")).toBe(true);
-
     const dummyGame: Game = {
       id: "nhl:1",
       league: "nhl",

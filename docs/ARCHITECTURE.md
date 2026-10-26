@@ -15,9 +15,9 @@ ESPN summary / team schedule / stats   ┘                    │
                                UiHub (/ws) ─► TV views + dashboard              Dispatcher.handle(event)
                                                                                   ├─ UI always
                                                                                   ├─ gates: automations_enabled, my_team_only (manual bypasses)
-                                                                                  ├─ HaOutputs.publishPusher ─► PusherHub ─► Pusher / WebSocket clients
+                                                                                  ├─ HaOutputs.orchestrateGoalAudio ─► horn volume, playback & TTS
                                                                                   ├─ HaOutputs.publishRest   ─► Home Assistant REST event bus (homeroom_*)
-                                                                                  ├─ LightRules.handle       ─► execute.<entity> over Pusher
+                                                                                  ├─ LightRules.handle       ─► Direct Home Assistant REST (/api/services/light/*)
                                                                                   └─ EventLog (diagnostics)
 ```
 
@@ -48,12 +48,13 @@ Per league: live (`poll_live_s`, default 2.5 s) while a synced game or any game 
 ## Providers (`server/src/providers/`)
 `espn.ts` scoreboard → `Game`, `fetchSummary` (scoring plays + boxscore rows in one call), raw JSON helpers. Supports multi-tournament fetching for IIHF international tournaments (Olympics, World Juniors, World Championship). `nhl.ts` score/PBP for official NHL API. `ahl.ts` scorebar and game summary for AHL via HockeyTech. `boxscore.ts` hockey stat rows (`shots`, `hits`, `faceoffs`, `powerplay`, `takeaways`, `giveaways`, `pim`) keyed on provider names. `insight.ts` last-10 results, hockey team-stat rows, players to watch (points leader + game log), 6 h cache. `strength.ts` normalisation (`ev|pp|sh|en`).
 
-## Home Assistant bridge
-`outputs/pusher.ts` implements a lightweight Pusher-protocol (v7) WebSocket server for `pysher` and WebSocket clients: connection_established, signed `private-*` subscription (HMAC-SHA256 of `socket_id:channel` with the app secret), ping/pong, 4009 on bad auth, channels must belong to a linked install. REST compatibility routes live in `http.ts`: `POST /integrations/home-assistant/link` (form-encoded, Bearer api key → stable `unique_id`/`websocket_key`/`integration_key`), `/devices/sync`, `/auth/websockets`, `/requests/execute` (the integration's reply to `get_state`). `outputs/lights.ts` publishes `execute.<entity>` commands (`flash`, `alternate`, `set_color`, `set_effect`, `restore`) after a `get_state` round trip, and restores afterwards. Details and wire formats: `SPEC.md` §1, setup: [`HOME_ASSISTANT.md`](HOME_ASSISTANT.md).
+## Home Assistant integration
+Homeroom integrates directly with Home Assistant using standard REST APIs with a long-lived access token:
+- `outputs/ha.ts`: synchronizes entities (`/api/states`), triggers test events (`/api/events/homeroom_test`), posts game events (`homeroom_<type>`), and orchestrates horn audio (`/api/services/media_player/play_media`, `/api/services/media_player/volume_set`) and TTS announcements (`/api/services/tts/speak`).
+- `outputs/lights.ts`: applies light actions directly via `/api/services/light/*`, querying state beforehand to restore brightness, color, and effects when the action completes.
 
 ## HTTP surface (`http.ts`)
-Integration: `/integrations/home-assistant/{link,devices/sync}`, `/auth/websockets`, `/requests/execute`, WS `/app/<key>`.
-Control plane: `/api/{leagues,schedule,sync,settings,triggers,trigger,hook/:trigger,test/goal,status,events/recent,games/live,games/raw,calibrate,teams/…,devices,actions,horns…,ha/test}`, `/healthz`, `/media/horns/<league>/<ABBR>.mp3`, WS `/ws`, static web build with SPA fallback. `ADMIN_TOKEN` (optional) is required on mutating routes and on `GET /api/hook/*`. `GET /api/settings` redacts the HA token.
+Control plane: `/api/{leagues,schedule,sync,settings,triggers,trigger,hook/:trigger,test/goal,status,events/recent,games/live,games/raw,calibrate,teams/…,entities,actions,horns…,ha/test,ha/sync}`, `/healthz`, `/media/horns/<league>/<ABBR>.mp3`, WS `/ws`, WS `/ws/live`, static web build with SPA fallback. `ADMIN_TOKEN` (optional) is required on mutating routes and on `GET /api/hook/*`. `GET /api/settings` redacts the HA token.
 
 ## Web (`web/src`)
 `views/` Dashboard, Scoreboard, Grid, Ticker (+`App.tsx` routes). `dashboard/` control panels. `kiosk/` goal overlay, toast, break screens. `components/` shared TV pieces (`GameBars`, `StatBars`, `SidePanel`, `Kiosk`). `lib/`: `live.ts` (single WS client, renders exactly what the server sends, already delayed), `clock.ts` (interpolated game clock), `colors.ts` (matchup colour resolver: contrast + clash avoidance), `format.ts`, `mock.ts` (`?mock=1` fake data for every view and state), `api.ts`, `hooks.ts`. Scoreboard debug: `&screen=live|countdown|players|form|stats|summary`.

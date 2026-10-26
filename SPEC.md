@@ -14,13 +14,13 @@ Live Feeds (NHL / ESPN / AHL)
       ▼
 Poller & Parser ──► Game State Engine ──► Stream-Sync Delay Buffer (0–120 s)
                                                     │
-            ┌───────────────────────────────────────┼──────────────────────────────────────┐
-            ▼                                       ▼                                      ▼
- Home Assistant REST                     Pusher WebSocket Server                   UI WebSocket Hub
- (homeroom_goal, ...)                   (/app/<PUSHER_APP_KEY>)                          (/ws)
-            │                                       │                                      │
-            ▼                                       ▼                                      ▼
- HA Automations & Lights                  External PySher Clients                 Kiosk TV Companion Views
+            ┌───────────────────────────────────────┴──────────────────────────────────────┐
+            ▼                                                                              ▼
+ Home Assistant Direct REST                                                        UI WebSocket Hub
+ (/api/services/*, /api/events/homeroom_*)                                               (/ws, /ws/live)
+            │                                                                              │
+            ▼                                                                              ▼
+ HA Automations, Lights, Horns & TTS                                             Kiosk TV Companion Views
 ```
 
 ### 1.1 Core Principles
@@ -74,12 +74,12 @@ Event types:
 }
 ```
 
-### 2.2 Pusher-Compatible WebSocket Server
-For integration with external tools (such as Python `pysher` listeners or WebSocket automation bridges), Homeroom implements a standard Pusher protocol v7 server on `ws[s]://<host>[:port]/app/<PUSHER_APP_KEY>`.
-
-- Clients subscribe to channels such as `private-<unique_id>` using HMAC-SHA256 authenticated handshakes via `/auth/websockets`.
-- Game events (`goal`, `goal_horn`, `game_start`, `game_end`, `period_start`, `period_end`) are broadcast as JSON payloads.
-- Device control channels (`private-home-assistant.<integration_key>`) support entity commands (`execute.<entity_id>` for flash, alternate colours, set effect, restore) and state querying (`get_state.<entity_id>`).
+### 2.2 Direct Device Control
+Homeroom directly interacts with Home Assistant smart home devices using standard REST service calls:
+- **Lights**: Drives `/api/services/light/*` (`turn_on` with `brightness`, `hs_color`, and effects). Prior states are saved and restored automatically.
+- **Goal Horn Audio**: Streams goal horn MP3s to target `media_player.*` entities via `/api/services/media_player/play_media`.
+- **Volume Boost**: Optionally boosts volume via `/api/services/media_player/volume_set` before playing the horn, and restores the previous volume when the horn finishes.
+- **TTS Announcements**: Announces goals using Home Assistant's native TTS engines via `/api/services/tts/speak`.
 
 ---
 

@@ -44,6 +44,9 @@ function mockHa(token: string) {
         if (body.volume_level !== 0.3) playingFor = 2;
         return void res.writeHead(200, { "content-type": "application/json" }).end("[]");
       }
+      if (req.method === "POST" && (req.url === "/api/services/media_player/play_media" || req.url === "/api/services/tts/speak")) {
+        return void res.writeHead(200, { "content-type": "application/json" }).end("[]");
+      }
       res.writeHead(404).end();
     });
   });
@@ -157,25 +160,25 @@ describe("wired into the goal path", () => {
   const game: Game = { id: "nhl:1", league: "nhl", sport: "hockey", status: "in", start_time: "", period: 1, period_label: "1st", clock: "1:00", intermission: false, home: team("MIN"), away: team("CBJ"), linescores: { home: [], away: [] }, stats: { home: {}, away: {} }, goals: [] };
   const goal = (horn?: string): EventPayload => ({ event_id: `evt_${Math.random()}`, type: "goal", emitted_at: 0, delay_s: 0, league: "nhl", sport: "hockey", game, team: game.home, natural_text: "goal", goal_horn: horn });
 
-  it("sets the volume BEFORE goal_horn goes out, goal is not delayed, and nothing happens without a horn", async () => {
-    app = await createApp({ store: new Store(":memory:"), appKey: "k", appSecret: "s", webDir: "/nonexistent", port: 0 });
-    app.store.link("some-key");
+  it("sets the volume BEFORE playing the goal horn, and nothing happens without a horn", async () => {
+    app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0 });
     expect(app.store.patchSettings({ ha: { url, token, fire_rest_events: false }, horn_volume: 0.8, horn_players: ["media_player.den"] })).toBeUndefined();
     app.engine.invalidateSettings();
+    app.engine.settings.horn_max_s = 0.05;
     (app.ha as { hornVolume: HornVolume }).hornVolume = new HornVolume(() => app.engine.settings, fast);
+
+    await app.ha.orchestrateGoalAudio(goal(undefined));
+    expect(ha.calls).toEqual([]); // no horn file => no volume change or playback
+
     const order: string[] = [];
-    vi.spyOn(app.hub, "broadcast").mockImplementation((_ch, event) => {
-      order.push(`${event}@vol=${ha.players["media_player.den"].volume}`);
-      return 1;
+    const origPost = (app.ha as unknown as { postService: (p: string, b: unknown) => Promise<Response> }).postService.bind(app.ha);
+    vi.spyOn(app.ha as unknown as { postService: typeof origPost }, "postService").mockImplementation(async (path, body) => {
+      order.push(`${path}@vol=${ha.players["media_player.den"].volume}`);
+      return origPost(path, body);
     });
-    app.ha.publishPusher(goal(undefined));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(ha.calls).toEqual([]); // no horn file => no volume change
-    order.length = 0;
-    app.ha.publishPusher(goal("http://x/media/horns/nhl/default.mp3"));
-    expect(order).toEqual(["goal@vol=0.3"]); // goal is immediate
-    await vi.waitFor(() => expect(order).toHaveLength(2));
-    expect(order[1]).toBe("goal_horn@vol=0.8");
+
+    await app.ha.orchestrateGoalAudio(goal("http://x/media/horns/nhl/default.mp3"));
+    expect(order).toContain("/api/services/media_player/play_media@vol=0.8");
     await waitRestore("media_player.den", 0.3);
   });
 });

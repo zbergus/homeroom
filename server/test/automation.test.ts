@@ -81,9 +81,9 @@ describe("triggers", () => {
 
 describe("Dispatcher gates", () => {
   const fakes = () => {
-    const calls = { ui: 0, pusher: 0, rest: 0, lights: 0 };
+    const calls = { ui: 0, rest: 0, lights: 0, audio: 0 };
     const ui = { event: () => calls.ui++ };
-    const ha = { publishPusher: () => (calls.pusher++, 1), publishRest: async () => void calls.rest++, orchestrateGoalAudio: async () => {} };
+    const ha = { publishRest: async () => void calls.rest++, orchestrateGoalAudio: async () => void calls.audio++ };
     const lights = { handle: () => (calls.lights++, 1) };
     return { calls, ui, ha, lights };
   };
@@ -106,7 +106,7 @@ describe("Dispatcher gates", () => {
     expect(r.outcome).toBe("filtered");
     expect(r.reason).toMatch(/my team only/);
     expect(calls.ui).toBe(2);
-    expect(calls.pusher).toBe(1);
+    expect(calls.rest).toBe(1);
     expect(calls.lights).toBe(1);
   });
 
@@ -123,14 +123,15 @@ describe("Dispatcher gates", () => {
     const { d, calls } = build({ automations_enabled: false }, []);
     expect(d.handle(ev({})).outcome).toBe("filtered");
     expect(d.handle(ev({ manual: true, trigger: "goal" })).outcome).toBe("delivered");
-    expect(calls.pusher).toBe(1);
+    expect(calls.rest).toBe(1);
+    expect(calls.lights).toBe(1);
   });
 
-  it("goal_overturned never goes to the HA integration or lights", () => {
+  it("delivered events reach ui, rest, and lights", () => {
     const { d, calls } = build({}, []);
-    d.handle(ev({ type: "goal_overturned" }));
-    expect(calls.pusher).toBe(0);
-    expect(calls.rest).toBe(1); // REST path may carry it (it only posts when configured)
+    d.handle(ev({ type: "goal" }));
+    expect(calls.rest).toBe(1);
+    expect(calls.lights).toBe(1);
     expect(calls.ui).toBe(1);
   });
 

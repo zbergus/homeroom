@@ -195,7 +195,7 @@ describe("local celebration library", () => {
 describe("celebration HTTP boundary", () => {
   it("enforces admin auth, browser origin, multipart route allowlist and the unchanged 10 MiB horn cap", async () => {
     const config = { ...loadConfig({}), adminToken: "local-test-admin" };
-    const whole = await createApp({ store: new Store(":memory:"), appKey: "test", appSecret: "test", webDir: path.join(mediaDir, "web"), config });
+    const whole = await createApp({ store: new Store(":memory:"), webDir: path.join(mediaDir, "web"), config });
     const url = "/api/celebrations/nhl/TST/default";
     const authorized = { ...headers, authorization: ["Bearer", config.adminToken].join(" ") };
     try {
