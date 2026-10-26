@@ -168,7 +168,7 @@ function FormPanel({ team, c, form, scale, row }: { team: Team; c: SideColors; f
         ))}
       </div>
       <div className="flex justify-between" style={{ marginTop: K(.6), gap: K(1) }}>
-        {last5.map((g, i) => <span key={i} className={`${D} flex-1 truncate text-center font-semibold uppercase`} style={{ fontSize: K(1.2), opacity: .85 }}>{g.venue === "A" ? "@" : ""}{g.opp_abbr}</span>)}
+        {last5.map((g, i) => <span key={i} className={`${D} flex-1 truncate text-center font-semibold uppercase tracking-tight`} style={{ fontSize: K(0.95), opacity: .85 }}>{g.venue === "A" ? "@" : ""}{g.opp_abbr}</span>)}
       </div>
     </div>
   );

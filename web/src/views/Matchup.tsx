@@ -92,12 +92,12 @@ function GoalieCard({
 
   return (
     <div
-      className={`relative flex flex-1 flex-col justify-between rounded-[2vmin] bg-black/60 border border-white/10 p-[2.2vmin] backdrop-blur-md overflow-hidden ${
+      className={`relative flex flex-1 flex-col justify-between rounded-[2vmin] bg-black/60 border border-white/10 p-[1.6vmin] backdrop-blur-md overflow-hidden ${
         alignRight ? "border-r-[0.8vmin]" : "border-l-[0.8vmin]"
       }`}
       style={{
         borderColor: c.fill,
-        gap: U(1.4),
+        gap: U(1.1),
       }}
     >
       {/* Background tint */}
@@ -108,10 +108,10 @@ function GoalieCard({
         }}
       />
 
-      {/* Header with Starter tag & Status badge */}
-      <div className={`relative flex items-center justify-between ${alignRight ? "flex-row-reverse" : "flex-row"}`}>
+      {/* Header with Starter tag & Status badge - consistent left-to-right alignment */}
+      <div className="relative flex items-center justify-between">
         <div className="flex items-center" style={{ gap: U(0.8) }}>
-          <span className="font-display font-black uppercase tracking-[.18em] text-slate-400" style={{ fontSize: U(1.4) }}>
+          <span className="font-display font-black uppercase tracking-[.18em] text-slate-400" style={{ fontSize: U(1.3) }}>
             {side === "away" ? "AWAY STARTER" : "HOME STARTER"}
           </span>
         </div>
@@ -121,7 +121,7 @@ function GoalieCard({
               ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_1vmin_rgba(16,185,129,0.3)]"
               : "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_1vmin_rgba(245,158,11,0.25)]"
           }`}
-          style={{ padding: `${U(0.2)} ${U(1.1)}`, fontSize: U(1.3) }}
+          style={{ padding: `${U(0.2)} ${U(1.1)}`, fontSize: U(1.2) }}
         >
           {statusLabel}
         </span>
@@ -129,33 +129,33 @@ function GoalieCard({
 
       {/* Goalie Bio */}
       {goalie ? (
-        <div className={`relative flex items-center ${alignRight ? "flex-row-reverse text-right" : "flex-row"}`} style={{ gap: U(1.8) }}>
-          <GoalieHeadshot goalie={goalie} team={team} size={9} />
+        <div className={`relative flex items-center ${alignRight ? "flex-row-reverse text-right" : "flex-row"}`} style={{ gap: U(1.6) }}>
+          <GoalieHeadshot goalie={goalie} team={team} size={7.5} />
           <div className="min-w-0 flex-1">
             {goalie.first && (
-              <div className="font-display font-medium uppercase leading-tight text-slate-300" style={{ fontSize: U(1.6) }}>
+              <div className="font-display font-medium uppercase leading-tight text-slate-300" style={{ fontSize: U(1.4) }}>
                 {goalie.first}
               </div>
             )}
             <div
               className="truncate font-display font-black uppercase leading-[0.95] text-white"
               style={{
-                fontSize: U(3.4),
+                fontSize: U(3.0),
                 textShadow: "0 .04em .2em rgba(0,0,0,.6)",
               }}
             >
               {goalie.last || goalie.name}
             </div>
-            <div className="font-display font-semibold uppercase tracking-wider text-slate-400 mt-[0.3vmin]" style={{ fontSize: U(1.4) }}>
+            <div className="font-display font-semibold uppercase tracking-wider text-slate-400 mt-[0.3vmin]" style={{ fontSize: U(1.3) }}>
               {team.name} {goalie.jersey ? `· #${goalie.jersey}` : ""}
             </div>
           </div>
         </div>
       ) : (
-        <div className="relative flex items-center justify-center py-[2vmin]" style={{ gap: U(1.5) }}>
-          <GoalieHeadshot team={team} size={7} />
+        <div className="relative flex items-center justify-center py-[1.5vmin]" style={{ gap: U(1.5) }}>
+          <GoalieHeadshot team={team} size={6.5} />
           <div className="flex flex-col">
-            <span className="font-display font-bold uppercase tracking-wider text-slate-400" style={{ fontSize: U(1.8) }}>
+            <span className="font-display font-bold uppercase tracking-wider text-slate-400" style={{ fontSize: U(1.6) }}>
               Starter Unannounced
             </span>
             <span className="font-display text-xs text-slate-500">Probable closer to puck drop</span>
@@ -164,22 +164,22 @@ function GoalieCard({
       )}
 
       {/* Goalie Season Stats Grid */}
-      <div className="relative grid grid-cols-3 rounded-[1.2vmin] bg-white/[0.04] p-[1.2vmin] border border-white/5" style={{ gap: U(0.8) }}>
+      <div className="relative grid grid-cols-3 rounded-[1.2vmin] bg-white/[0.04] p-[1vmin] border border-white/5" style={{ gap: U(0.8) }}>
         <div className="flex flex-col items-center justify-center">
           <span className="font-display text-[1vmin] font-bold uppercase tracking-wider text-slate-400">RECORD</span>
-          <span className="num font-display font-black text-white" style={{ fontSize: U(2.2) }}>
+          <span className="num font-display font-black text-white" style={{ fontSize: U(1.9) }}>
             {goalie?.record || "—"}
           </span>
         </div>
         <div className="flex flex-col items-center justify-center border-x border-white/10">
           <span className="font-display text-[1vmin] font-bold uppercase tracking-wider text-slate-400">GAA</span>
-          <span className="num font-display font-black text-white" style={{ fontSize: U(2.2) }}>
+          <span className="num font-display font-black text-white" style={{ fontSize: U(1.9) }}>
             {goalie?.gaa != null ? String(goalie.gaa) : "—"}
           </span>
         </div>
         <div className="flex flex-col items-center justify-center">
           <span className="font-display text-[1vmin] font-bold uppercase tracking-wider text-slate-400">SV%</span>
-          <span className="num font-display font-black text-white" style={{ fontSize: U(2.2) }}>
+          <span className="num font-display font-black text-white" style={{ fontSize: U(1.9) }}>
             {goalie?.save_pct != null ? String(goalie.save_pct) : "—"}
           </span>
         </div>
@@ -204,21 +204,21 @@ function TeamMatchupBlock({
       className={`flex flex-1 flex-col items-center justify-center ${alignRight ? "md:items-end" : "md:items-start"}`}
       style={{ gap: U(1.2), padding: `0 ${U(2)}` }}
     >
-      <div className={`flex items-center ${alignRight ? "flex-row-reverse" : "flex-row"}`} style={{ gap: U(2.5) }}>
-        <div className="relative inline-flex items-center justify-center">
-          <TeamBadge team={team} size={U(15)} plain />
+      <div className={`flex items-center ${alignRight ? "flex-row-reverse" : "flex-row"}`} style={{ gap: U(2) }}>
+        <div className="relative shrink-0 inline-flex items-center justify-center">
+          <TeamBadge team={team} size={U(11.5)} plain />
         </div>
-        <div className={`flex flex-col ${alignRight ? "text-right items-end" : "text-left items-start"}`}>
+        <div className={`flex flex-col min-w-0 ${alignRight ? "text-right items-end" : "text-left items-start"}`}>
           <span
             className="font-display font-black uppercase tracking-wider text-slate-400"
-            style={{ fontSize: U(1.6) }}
+            style={{ fontSize: U(1.5) }}
           >
             {side === "away" ? "VISITOR" : "HOME"}
           </span>
           <div
-            className="font-display font-black uppercase tracking-tight text-white leading-[0.95] max-w-[34vw] truncate"
+            className="font-display font-black uppercase tracking-tight text-white leading-[0.95] max-w-[32vw] truncate"
             style={{
-              fontSize: U(4.4),
+              fontSize: team.name.length > 11 ? U(3.0) : team.name.length > 8 ? U(3.4) : U(3.8),
               textShadow: "0 .04em .3em rgba(0,0,0,.7)",
             }}
           >
@@ -227,7 +227,7 @@ function TeamMatchupBlock({
           <div className="flex items-center mt-[0.6vmin]" style={{ gap: U(1) }}>
             <span
               className="font-display font-bold uppercase tracking-widest text-slate-300"
-              style={{ fontSize: U(1.8), color: c.fill }}
+              style={{ fontSize: U(1.7), color: c.fill }}
             >
               {team.abbr}
             </span>

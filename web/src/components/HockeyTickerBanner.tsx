@@ -18,12 +18,12 @@ const U = (n: number) => `calc(var(--u) * ${n})`;
 function HighContrastCrest({ team }: { team: Team }) {
   return (
     <div
-      className="relative flex shrink-0 items-center justify-center rounded-full bg-black/45 border border-white/25 p-[calc(var(--u)*0.25)] shadow-[0_0.2vmin_0.8vmin_rgba(0,0,0,0.85)]"
-      style={{ width: U(4.5), height: U(4.5) }}
+      className="relative flex shrink-0 items-center justify-center rounded-full bg-black/45 border border-white/25 p-[calc(var(--u)*0.2)] shadow-[0_0.2vmin_0.8vmin_rgba(0,0,0,0.85)]"
+      style={{ width: U(4.0), height: U(4.0) }}
     >
       <TeamBadge
         team={team}
-        size={U(3.9)}
+        size={U(3.5)}
         plain
         className="filter drop-shadow-[0_0.1em_0.15em_rgba(0,0,0,0.9)]"
       />
@@ -50,8 +50,8 @@ function TeamTopRibbon({
         flash ? "goal-siren-strobe bar-flash" : ""
       }`}
       style={{
-        padding: `${U(0.5)} ${U(1.2)}`,
-        gap: U(0.8),
+        padding: `${U(0.5)} ${U(1.0)}`,
+        gap: U(0.6),
         color: colors.text,
         background: isAway
           ? `linear-gradient(135deg, ${colors.fill} 0%, ${colors.deep} 100%)`
@@ -68,16 +68,16 @@ function TeamTopRibbon({
         }}
       >
         <span
-          className="block w-full truncate font-display font-black uppercase tracking-wide leading-none"
+          className="block max-w-full truncate font-display font-black uppercase tracking-wide leading-none"
           style={{
-            fontSize: U(1.8),
+            fontSize: team.name.length > 11 ? U(1.35) : team.name.length > 8 ? U(1.5) : U(1.7),
             textShadow: colors.textIsDark ? "none" : "0 0.05em 0.25em rgba(0,0,0,0.6)",
           }}
         >
           {team.name}
         </span>
         <span
-          className="block w-full truncate font-display font-bold uppercase tracking-wider opacity-80 leading-none"
+          className="block max-w-full truncate font-display font-bold uppercase tracking-wider opacity-80 leading-none"
           style={{ fontSize: U(1.1), marginTop: U(0.3) }}
         >
           {team.abbr}
@@ -269,9 +269,7 @@ function BottomBanner({
             className="truncate font-display font-semibold uppercase tracking-wider text-slate-400"
             style={{ fontSize: U(1.2) }}
           >
-            {game.away.record && game.home.record
-              ? `${game.away.record} VS ${game.home.record}`
-              : "MATCHUP"}
+            {(typeof game.odds === "object" && game.odds !== null && "details" in game.odds && String((game.odds as { details?: unknown }).details ?? "")) || "PREGAME"}
           </span>
         ) : (
           <span
@@ -316,7 +314,7 @@ export function HockeyTickerBanner({
   flashAbbr?: string | undefined;
 }) {
   const { away, home } = resolveMatchup(game.away, game.home);
-  const shots = findShots(game);
+  const shots = game.status === "pre" ? null : findShots(game);
   const alert = getTickerAlert(game);
   const showScore = game.status !== "pre";
 
@@ -324,7 +322,7 @@ export function HockeyTickerBanner({
     <div
       className="inline-flex flex-col shrink-0 overflow-hidden rounded-[calc(var(--u)*1.2)] border border-white/15 shadow-[0_0.8vmin_2.5vmin_rgba(0,0,0,0.6)]"
       style={{
-        width: U(48),
+        width: U(54),
         height: U(11),
       }}
     >

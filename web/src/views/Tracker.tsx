@@ -144,7 +144,7 @@ function GoalieCard({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-[0.8vmin]">
-          <span className="truncate font-display font-black uppercase text-white" style={{ fontSize: U(2.2) }}>
+          <span className="truncate font-display font-black uppercase text-white" style={{ fontSize: goalie.name.length > 14 ? U(1.3) : U(1.5) }}>
             {goalie.name}
           </span>
           <span className="rounded bg-white/10 px-[0.8vmin] py-[0.1vmin] font-display font-bold uppercase text-slate-300" style={{ fontSize: U(1.2) }}>
@@ -252,7 +252,7 @@ function SkaterTable({
 
       {/* Column Headers */}
       <div
-        className="grid grid-cols-[3.2fr_1.1fr_1.1fr_1.2fr_1.1fr_1.2fr_1.6fr] items-center px-[1.6vmin] py-[0.8vmin] border-b border-white/10 font-display font-bold uppercase tracking-wider text-slate-400 select-none bg-slate-900/50"
+        className="grid grid-cols-[5fr_1fr_1fr_1.1fr_1fr_1fr_1.4fr] items-center px-[1.6vmin] py-[0.8vmin] border-b border-white/10 font-display font-bold uppercase tracking-wider text-slate-400 select-none bg-slate-900/50"
         style={{ fontSize: U(1.3) }}
       >
         <span>Player</span>
@@ -284,10 +284,10 @@ function SkaterTable({
           return (
             <div
               key={s.id || s.name}
-              className={`grid grid-cols-[3.2fr_1.1fr_1.1fr_1.2fr_1.1fr_1.2fr_1.6fr] items-center px-[1.6vmin] py-[0.7vmin] transition-colors ${
+              className={`grid grid-cols-[5fr_1fr_1fr_1.1fr_1fr_1fr_1.4fr] items-center px-[1.6vmin] py-[0.7vmin] transition-colors ${
                 hasScore ? "bg-amber-400/10 hover:bg-amber-400/15" : hasPoints ? "bg-white/[0.03] hover:bg-white/[0.06]" : "hover:bg-white/[0.04]"
               }`}
-              style={{ fontSize: U(1.7) }}
+              style={{ fontSize: U(1.5) }}
             >
               {/* Player Info */}
               <div className="flex items-center min-w-0 pr-[0.8vmin]" style={{ gap: U(1) }}>

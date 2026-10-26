@@ -79,7 +79,7 @@ function TeamBlock({ team, c, pre, side, pp }: { team: Team; c: SideColors; pre:
   return (
     <div className={`flex min-w-0 items-center ${left ? "flex-row" : "flex-row-reverse"}`} style={{ gap: U(1.2), justifyContent: pre ? "center" : "space-between", padding: `0 ${U(2)}` }}>
       {!pre && <Score value={team.score ?? 0} c={c} />}
-      <div className="flex min-w-0 flex-col items-center" style={{ gap: U(.8) }}>
+      <div className="flex flex-col items-center shrink-0" style={{ gap: U(.8), width: U(pre ? 22 : 19), maxWidth: "100%" }}>
         <div className="relative inline-flex items-center justify-center">
           <TeamBadge team={team} size={U(pre ? 14 : 11.5)} plain />
           {pp && (
@@ -91,7 +91,16 @@ function TeamBlock({ team, c, pre, side, pp }: { team: Team; c: SideColors; pre:
             </span>
           )}
         </div>
-        <div className="max-w-full truncate text-center font-display font-black uppercase tracking-wide" style={{ fontSize: U(2.6), color: c.text, textShadow: c.textIsDark ? "none" : "0 .05em .2em rgba(0,0,0,.4)" }}>{team.name}</div>
+        <div
+          className="w-full truncate text-center font-display font-black uppercase tracking-wide leading-tight"
+          style={{
+            fontSize: team.name.length > 10 ? U(1.9) : U(2.4),
+            color: c.text,
+            textShadow: c.textIsDark ? "none" : "0 .05em .2em rgba(0,0,0,.4)",
+          }}
+        >
+          {team.name}
+        </div>
       </div>
     </div>
   );
