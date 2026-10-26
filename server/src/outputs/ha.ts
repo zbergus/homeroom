@@ -10,6 +10,10 @@ const rgb = (c: Rgb) => [c.r, c.g, c.b];
 const SERVICE_TIMEOUT_MS = 5000;
 const MEDIA_TIMEOUT_MS = 20_000;
 const TTS_TIMEOUT_MS = 30_000;
+/** slow TTS engines (e.g. generative ones) take seconds to synthesize; give up and speak anyway after this */
+const TTS_WARM_MS = 20_000;
+/** pause before the single retry of a failed announcement */
+const TTS_RETRY_MS = 1500;
 
 /** Body of a failed service call, trimmed: Home Assistant explains most failures in it (bad entity, unreachable player). */
 async function responseDetail(res: Response): Promise<string> {
@@ -178,26 +182,62 @@ export class HaOutputs {
     }
   }
 
+  /** The TTS engine to call: the configured one, else the first `tts.*` entity Home Assistant reported. */
+  private ttsEngine(): string | undefined {
+    const configured = this.engine.settings.tts_engine;
+    if (configured) return configured;
+    const known = this.engine.store.getDevices().find((d) => d.device_class === "tts" && typeof d.entity_id === "string");
+    return typeof known?.entity_id === "string" ? known.entity_id : undefined;
+  }
+
   /** Speaks an announcement on the configured TTS speaker. */
   async speakAnnouncement(message: string): Promise<boolean> {
-    const { ha, tts_player, horn_players, tts_engine } = this.engine.settings;
+    const { ha, tts_player, horn_players } = this.engine.settings;
     if (!ha.url || !ha.token) return false;
     const targetPlayer = tts_player || horn_players[0];
     if (!targetPlayer) return false;
-
-    try {
-      const body: Record<string, unknown> = {
-        media_player_entity_id: targetPlayer,
-        message,
-      };
-      // The REST API takes the service target as a top-level entity_id; a `target` object is rejected with HTTP 400.
-      if (tts_engine) body.entity_id = tts_engine;
-      const res = await this.postService("/api/services/tts/speak", body, TTS_TIMEOUT_MS);
-      if (!res.ok) console.warn(`[ha] speakAnnouncement -> HTTP ${res.status}: ${await responseDetail(res)}`);
-      return res.ok;
-    } catch (e) {
-      console.warn("[ha] speakAnnouncement error:", errMsg(e));
+    // tts.speak needs an entity_id; without one Home Assistant answers a bare 400: Bad Request
+    const engineId = this.ttsEngine();
+    if (!engineId) {
+      console.warn("[ha] speakAnnouncement skipped: no tts.* engine known (pick one in Settings, Audio, and sync)");
       return false;
+    }
+
+    await this.warmTts(engineId, message);
+    const body: Record<string, unknown> = { entity_id: engineId, media_player_entity_id: targetPlayer, message };
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await this.postService("/api/services/tts/speak", body, TTS_TIMEOUT_MS);
+        if (res.ok) return true;
+        console.warn(
+          `[ha] speakAnnouncement ${engineId} -> ${targetPlayer}: HTTP ${res.status}: ${await responseDetail(res)}${attempt === 1 ? " (retrying once)" : ""}`,
+        );
+      } catch (e) {
+        console.warn(`[ha] speakAnnouncement ${engineId} -> ${targetPlayer} error: ${errMsg(e)}`);
+      }
+      // AirPlay speakers fail a stream now and then (pyatv gives the download 10 s); one quiet retry beats silence
+      if (attempt === 1) await new Promise((r) => setTimeout(r, TTS_RETRY_MS).unref());
+    }
+    return false;
+  }
+
+  /**
+   * Synthesize the line before speaking it: AirPlay speakers download the clip and give up after 10 s, so a
+   * proxy URL that still has to call the TTS engine fails on slow engines. Best effort; failures fall through.
+   */
+  private async warmTts(engineId: string, message: string): Promise<void> {
+    const { ha } = this.engine.settings;
+    try {
+      const res = await this.f(`${ha.url.replace(/\/$/, "")}/api/tts_get_url`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ha.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ engine_id: engineId, message }),
+        redirect: "error",
+        signal: AbortSignal.timeout(TTS_WARM_MS),
+      });
+      if (!res.ok) console.warn(`[ha] tts_get_url -> HTTP ${res.status}: ${await responseDetail(res)}`);
+    } catch (e) {
+      console.warn("[ha] tts_get_url error:", errMsg(e));
     }
   }
 

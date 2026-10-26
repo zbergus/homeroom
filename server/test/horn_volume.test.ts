@@ -44,7 +44,7 @@ function mockHa(token: string) {
         if (body.volume_level !== 0.3) playingFor = 2;
         return void res.writeHead(200, { "content-type": "application/json" }).end("[]");
       }
-      if (req.method === "POST" && (req.url === "/api/services/media_player/play_media" || req.url === "/api/services/tts/speak")) {
+      if (req.method === "POST" && (req.url === "/api/services/media_player/play_media" || req.url === "/api/services/tts/speak" || req.url === "/api/tts_get_url")) {
         return void res.writeHead(200, { "content-type": "application/json" }).end("[]");
       }
       res.writeHead(404).end();
@@ -162,14 +162,14 @@ describe("wired into the goal path", () => {
 
   it("sets the volume BEFORE playing the goal horn, and nothing happens without a horn", async () => {
     app = await createApp({ store: new Store(":memory:"), webDir: "/nonexistent", port: 0 });
-    expect(app.store.patchSettings({ ha: { url, token, fire_rest_events: false }, horn_volume: 0.8, horn_players: ["media_player.den"] })).toBeUndefined();
+    expect(app.store.patchSettings({ ha: { url, token, fire_rest_events: false }, horn_volume: 0.8, horn_players: ["media_player.den"], tts_engine: "tts.piper" })).toBeUndefined();
     app.engine.invalidateSettings();
     app.engine.settings.horn_max_s = 0.05;
     (app.ha as { hornVolume: HornVolume }).hornVolume = new HornVolume(() => app.engine.settings, fast);
 
     await app.ha.orchestrateGoalAudio(goal(undefined));
     // no horn file => no volume change or playback, but the goal announcement still goes out
-    expect(ha.calls.map((c) => c.url)).toEqual(["/api/services/tts/speak"]);
+    expect(ha.calls.map((c) => c.url)).toEqual(["/api/tts_get_url", "/api/services/tts/speak"]);
 
     const order: string[] = [];
     const origPost = (app.ha as unknown as { postService: (p: string, b: unknown) => Promise<Response> }).postService.bind(app.ha);

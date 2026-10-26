@@ -91,6 +91,11 @@ function mockHomeAssistant(token: string) {
         return;
       }
 
+      if (req.method === "POST" && req.url === "/api/tts_get_url") {
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ url: "http://ha.test/api/tts_proxy/abc.mp3", path: "/api/tts_proxy/abc.mp3" }));
+        return;
+      }
+
       if (req.method === "POST" && req.url?.startsWith("/api/events/")) {
         res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ message: "event fired" }));
         return;
@@ -235,6 +240,30 @@ describe("Direct Home Assistant REST integration", () => {
       media_player_entity_id: "media_player.mancave_speaker",
       message: "Goal Montreal!",
     });
+    // the audio is synthesized first: AirPlay speakers abandon a proxy URL that is still generating
+    const warm = haMock.calls.findIndex((c) => c.url === "/api/tts_get_url");
+    expect(warm).toBeGreaterThanOrEqual(0);
+    expect(warm).toBeLessThan(haMock.calls.findIndex((c) => c.url === "/api/services/tts/speak"));
+  });
+
+  it("falls back to the first discovered tts entity when no engine is configured", async () => {
+    await haOutputs.syncEntities();
+    store.patchSettings({ tts_engine: null });
+    engine.invalidateSettings();
+    expect(await haOutputs.speakAnnouncement("Goal Montreal!")).toBe(true);
+    const speakCall = haMock.calls.find((c) => c.url === "/api/services/tts/speak");
+    expect((speakCall?.body as { entity_id?: string }).entity_id).toBe("tts.piper");
+  });
+
+  it("retries a failed announcement once", async () => {
+    let calls = 0;
+    const fake = (async () => {
+      calls++;
+      return new Response("Speaker is sulking", { status: calls <= 2 ? 500 : 200 });
+    }) as unknown as typeof fetch;
+    const flaky = new HaOutputs(engine, { fetchImpl: fake });
+    expect(await flaky.speakAnnouncement("Goal Montreal!")).toBe(true);
+    expect(calls).toBe(3); // tts_get_url + tts.speak (failed) + tts.speak (retry)
   });
 
   it("speaks a goal announcement even when no horn is available", async () => {
