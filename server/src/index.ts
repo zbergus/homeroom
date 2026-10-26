@@ -7,16 +7,18 @@ const config = loadConfig();
 for (const note of securityNotes(config)) log.warn(note);
 
 const app = await createApp({ appKey: config.appKey, appSecret: config.appSecret, webDir: config.webDir, port: config.port, startPoller: true, config });
-log.info(`listening on :${app.port} (pusher app key: ${config.appKey})`);
-log.info(`web root: ${config.webDir}`);
-log.info(`log level: ${config.logLevel}`);
+if (config.logLevel !== "silent") {
+  console.log(`[homeroom] listening on :${app.port} (pusher app key: ${config.appKey})`);
+  console.log(`[homeroom] web root: ${config.webDir}`);
+  console.log(`[homeroom] log level: ${config.logLevel}`);
+}
 
 const FORCE_EXIT_MS = 10_000;
 let stopping = false;
 const shutdown = async (signal: string) => {
   if (stopping) return;
   stopping = true;
-  log.info(`${signal}: shutting down`);
+  if (config.logLevel !== "silent") console.log(`[homeroom] ${signal}: shutting down`);
   // a stuck keep-alive socket must not keep a container from restarting
   setTimeout(() => process.exit(1), FORCE_EXIT_MS).unref();
   try {

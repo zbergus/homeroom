@@ -11,7 +11,7 @@ const blank = <T extends z.ZodType>(s: T) => z.preprocess(blankToUndefined, s);
 
 const EnvSchema = z.object({
   PORT: blank(z.coerce.number().int().min(0).max(65535).default(8080)),
-  LOG_LEVEL: blank(z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info")),
+  LOG_LEVEL: blank(z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("warn")),
   PUSHER_APP_KEY: blank(z.string().min(1).default(DEFAULT_APP_KEY)),
   PUSHER_APP_SECRET: blank(z.string().min(1).default(DEFAULT_APP_SECRET)),
   WEB_DIR: blank(z.string().optional()),
