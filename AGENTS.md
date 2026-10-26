@@ -49,7 +49,7 @@ Always finish a change with: server `npm run typecheck && npm run lint && npx vi
 - Settings changes: validate in `Store.patchSettings`, expose in `types.ts` (server **and** `web/src/types.ts`; keep them in sync by hand), and only call `poller.poke()` when polling inputs changed (not for the delay slider).
 - UI: everything scales with the `--u` unit system on TV views (no fixed px), tabular numerals, landscape **and** portrait, hide blocks with missing data. Respect `prefers-reduced-motion` except the goal overlay stays visible.
 - Tests: pure logic in `server/test/*.test.ts`; whole-stack tests use `createApp({ store: new Store(":memory:") ... port: 0 })`; parsers use `server/test/fixtures/*.json` captured from real feeds. Tests must not write into the repo (vitest config points `DATA_DIR`/`MEDIA_DIR` at a temp dir).
-- Commits and pushes only when the user asks.
+- Commits and pushes only when the user asks. Commits must follow Conventional Commits formatting and use the user's configured git identity (`git config user.name` and `git config user.email`), never machine or agent default identities.
 
 ## More
 Provider quirks, Playwright/browser notes and the implemented/unverified/backlog status live in [`docs/AGENT-NOTES.md`](docs/AGENT-NOTES.md); read it when touching providers or planning new work.
