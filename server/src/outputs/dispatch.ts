@@ -4,6 +4,9 @@ import type { EventPayload } from "../types.js";
 import type { HaOutputs } from "./ha.js";
 import type { LightRules } from "./lights.js";
 import type { UiHub } from "./ui.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("dispatch");
 import { errMsg } from "../security.js";
 
 /**
@@ -93,12 +96,14 @@ export class Dispatcher {
     if (!d.ok) {
       rec.outcome = "filtered";
       rec.reason = d.reason;
+      log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) filtered: ${d.reason}`);
     } else {
       if (!INTERNAL_ONLY.has(ev.type)) rec.sent.pusher_clients = this.ha.publishPusher(ev);
       const { ha } = this.engine.settings;
       rec.sent.rest = ha.fire_rest_events && !!ha.url && !!ha.token;
-      void this.ha.publishRest(ev).catch((err) => console.error("[ha] rest failed:", errMsg(err)));
+      void this.ha.publishRest(ev).catch((err) => log.error("[ha] rest failed:", errMsg(err)));
       rec.sent.lights = this.lights.handle(ev);
+      log.info(`event ${ev.type} (${ev.game.away.abbr} @ ${ev.game.home.abbr}) delivered (pusher: ${rec.sent.pusher_clients}, lights: ${rec.sent.lights}, rest: ${rec.sent.rest})`);
     }
     this.log.add(rec);
     return rec;

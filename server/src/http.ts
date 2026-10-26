@@ -18,6 +18,7 @@ import { HornService, hornWarnings } from "./audio/horns.js";
 import { findRosterPlayerName, getTeamRoster } from "./providers/roster.js";
 import { celebrationRoutes } from "./video/celebrations.js";
 import { getPreloadedTeams } from "./hockeyTeams.js";
+import { createLogger, sanitizeUrl } from "./logger.js";
 import {
   ABBR_RE, ActionListSchema, CalibrateBodySchema, DevicesSyncSchema, ExecuteBodySchema, firstIssue, HookQuerySchema, SyncBodySchema, TeamOverrideSchema,
   TriggerBodySchema, WsAuthBodySchema,
@@ -100,7 +101,8 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   // pre-build processed horns in the background (production wiring only; tests inject their own service)
   const warmHorns = () => { if (!d.horns) void horns.warm(hornFileList()).catch((e) => console.warn("[horns] warm-up failed:", errMsg(e))); };
   const config = d.config ?? loadConfig();
-  const app = Fastify({ logger: { level: config.logLevel } });
+  const httpLog = createLogger("http");
+  const app = Fastify({ logger: false });
   await app.register(formbody);
   await app.register(multipart, { limits: { fileSize: MAX_HORN_BYTES, files: 1 } });
 
@@ -111,8 +113,55 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
   const integrationCalls = new RateLimiter(600, 60_000);
   const isRead = (m: string) => m === "GET" || m === "HEAD";
 
-  app.addHook("onSend", async (_req, reply) => {
+  app.addHook("onRequest", async (req) => {
+    (req as unknown as { startTime: number }).startTime = performance.now();
+  });
+
+  app.addHook("onSend", async (req, reply, payload) => {
     reply.header("X-Content-Type-Options", "nosniff").header("X-Frame-Options", "SAMEORIGIN").header("Referrer-Policy", "same-origin");
+    if (reply.statusCode >= 400 && typeof payload === "string") {
+      try {
+        const parsed: unknown = JSON.parse(payload);
+        if (typeof parsed === "object" && parsed !== null) {
+          const rec = parsed as Record<string, unknown>;
+          if (typeof rec.error === "string") (req as unknown as { errorDetail?: string }).errorDetail = rec.error;
+          else if (typeof rec.message === "string") (req as unknown as { errorDetail?: string }).errorDetail = rec.message;
+        }
+      } catch {
+        // payload is not json
+      }
+    }
+    return payload;
+  });
+
+  app.addHook("onResponse", async (req, reply) => {
+    const start = (req as unknown as { startTime?: number }).startTime ?? performance.now();
+    const duration = Math.round(performance.now() - start);
+    const status = reply.statusCode;
+    const detail = (req as unknown as { errorDetail?: string }).errorDetail;
+    const suffix = detail ? ` - ${detail}` : "";
+    const cleanUrl = sanitizeUrl(req.url);
+    const msg = `${req.method} ${cleanUrl} ${status} (${duration}ms)${suffix}`;
+    if (status >= 500) {
+      httpLog.error(msg);
+    } else if (status >= 400) {
+      httpLog.warn(msg);
+    } else if (req.url === "/healthz") {
+      httpLog.debug(msg);
+    } else {
+      httpLog.info(msg);
+    }
+  });
+
+  app.setErrorHandler((error: unknown, req, reply) => {
+    const errObj = typeof error === "object" && error !== null ? (error as Record<string, unknown>) : {};
+    const status = typeof errObj.statusCode === "number" && errObj.statusCode >= 400 && errObj.statusCode < 600 ? errObj.statusCode : 500;
+    const msg = typeof errObj.message === "string" ? errObj.message : "Internal Server Error";
+    (req as unknown as { errorDetail?: string }).errorDetail = msg;
+    if (status >= 500) {
+      httpLog.error(`${req.method} ${sanitizeUrl(req.url)} uncaught exception:`, error);
+    }
+    return reply.code(status).send({ error: msg });
   });
 
   app.addHook("onRequest", async (req, reply) => {
@@ -266,6 +315,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     if (!suggestion) return reply.code(409).send({
       error: "No unique match in recent clock history. Wait for a few live polls, check the period and clock, and retry while the TV clock is ticking; stopped clocks and polling gaps cannot be calibrated reliably.",
     });
+    httpLog.info(`calibrated delay: ${suggestion.delay_s}s for ${g.id} (P${b.tv_period} ${b.tv_clock})`);
     return suggestion;
   });
 

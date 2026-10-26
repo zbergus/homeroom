@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { setLogLevel } from "./logger.js";
 
 const DEFAULT_APP_KEY = "homeroom-local-key";
 const DEFAULT_APP_SECRET = "homeroom-local-secret";
@@ -10,7 +11,7 @@ const blank = <T extends z.ZodType>(s: T) => z.preprocess(blankToUndefined, s);
 
 const EnvSchema = z.object({
   PORT: blank(z.coerce.number().int().min(0).max(65535).default(8080)),
-  LOG_LEVEL: blank(z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("warn")),
+  LOG_LEVEL: blank(z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info")),
   PUSHER_APP_KEY: blank(z.string().min(1).default(DEFAULT_APP_KEY)),
   PUSHER_APP_SECRET: blank(z.string().min(1).default(DEFAULT_APP_SECRET)),
   WEB_DIR: blank(z.string().optional()),
@@ -42,6 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`invalid environment: ${detail}`);
   }
   const e = parsed.data;
+  setLogLevel(e.LOG_LEVEL);
   return {
     port: e.PORT,
     logLevel: e.LOG_LEVEL,
