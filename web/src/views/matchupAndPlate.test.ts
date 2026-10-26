@@ -81,6 +81,33 @@ describe("Matchup / VS Screen: pickMatchupGame", () => {
     const picked = pickMatchupGame(liveOnly, "auto", null, null, now);
     expect(picked?.id).toBe("nhl:1");
   });
+
+  it("expires finished games after FINAL_MS when finalSeen is provided in auto mode", () => {
+    const finalSeen = new Map<string, number>();
+    const finishedGame = makeGame("nhl:fin", "MTL", "WPG", "post", -120, 3);
+    finalSeen.set("nhl:fin", now - 15 * 60_000); // seen 15 min ago (exceeds 10 min FINAL_MS)
+
+    const picked = pickMatchupGame([finishedGame], "auto", null, null, now, finalSeen);
+    expect(picked).toBeUndefined(); // Expired! Yields to idle / next game
+  });
+
+  it("immediately expires stale finished games started > 4 hours ago", () => {
+    const staleYesterdayGame = makeGame("nhl:yesterday", "MTL", "WPG", "post", -300, 3); // started 5 hours ago
+    const picked = pickMatchupGame([staleYesterdayGame], "auto", null, null, now);
+    expect(picked).toBeUndefined(); // Stale yesterday game dropped
+  });
+
+  it("preserves finished games when explicitly requested by wantGame or wantTeam", () => {
+    const finalSeen = new Map<string, number>();
+    const finishedGame = makeGame("nhl:fin", "MTL", "WPG", "post", -300, 3);
+    finalSeen.set("nhl:fin", now - 60 * 60_000);
+
+    const pickedByGame = pickMatchupGame([finishedGame], "nhl:fin", null, null, now, finalSeen);
+    expect(pickedByGame?.id).toBe("nhl:fin");
+
+    const pickedByTeam = pickMatchupGame([finishedGame], null, "MTL", null, now, finalSeen);
+    expect(pickedByTeam?.id).toBe("nhl:fin");
+  });
 });
 
 describe("Single-team Score Plate: singleTeamSituation", () => {

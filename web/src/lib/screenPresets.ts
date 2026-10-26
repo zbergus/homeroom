@@ -1,4 +1,4 @@
-export type PaneViewName = "scoreboard" | "ticker" | "plate" | "player" | "grid";
+export type PaneViewName = "scoreboard" | "ticker" | "plate" | "player" | "grid" | "matchup" | "vs";
 
 export type LayoutDirection = "row" | "col" | "grid";
 
@@ -54,6 +54,16 @@ export const SCREEN_PRESETS: Record<string, ScreenPreset> = {
     panes: [
       { view: "scoreboard", ratio: 50, title: "Main Scoreboard" },
       { view: "ticker", ratio: 50, title: "Live Ticker" },
+    ],
+  },
+  "dual-vs": {
+    name: "dual-vs",
+    label: "Dual Matchup VS",
+    desc: "Stadium duel with Away team on the left screen and Home team on the right",
+    direction: "row",
+    panes: [
+      { view: "matchup", params: { side: "away" }, ratio: 50, title: "Away Team" },
+      { view: "matchup", params: { side: "home" }, ratio: 50, title: "Home Team" },
     ],
   },
   "grid-ticker": {

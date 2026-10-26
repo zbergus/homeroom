@@ -36,6 +36,21 @@ describe("Screen View Component", () => {
     expect(html).toContain("flex-row");
   });
 
+  it("renders dual-vs preset with away and home matchup panes", () => {
+    const html = renderToString(
+      <MemoryRouter initialEntries={["/screen/dual-vs?mock=1"]}>
+        <Routes>
+          <Route path="/screen/:name" element={<Screen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("data-pane-view=\"matchup\"");
+    expect(html).toContain("src=\"/matchup?mock=1&amp;side=away\"");
+    expect(html).toContain("src=\"/matchup?mock=1&amp;side=home\"");
+    expect(html).toContain("flex-row");
+  });
+
   it("renders grid-ticker preset with vertical split", () => {
     const html = renderToString(
       <MemoryRouter initialEntries={["/screen/grid-ticker?mock=1"]}>

@@ -49,9 +49,9 @@ const SCREENS: ScreenDef[] = [
     id: "matchup",
     basePath: "/matchup?game=auto",
     name: "Matchup / VS Screen",
-    tagline: "Dedicated pregame matchup face-off",
-    desc: "Shows the upcoming puck drop countdown, starting goalie duel (probables & confirmed starters with season GAA, SV% and record), team crests, and season records. Supports ?team=BOS or ?game=auto.",
-    bestFor: "Pregame anticipation display, bar header, companion display",
+    tagline: "Dedicated pregame face-off, live duel & postgame recap",
+    desc: "Shows pregame countdown and starting goalie duel, live scoring during play, and final score with linescore & team stats recap. Supports dual-screen setups (?side=away for Left TV, ?side=home for Right TV) with stadium-style chevrons. Also accessible via /vs.",
+    bestFor: "Pregame hype, dual-screen TV setups, sports bar walls, companion display",
     aspect: "16:9 Landscape or Portrait",
     category: "companion",
   },
@@ -80,9 +80,19 @@ const SCREENS: ScreenDef[] = [
     basePath: "/screen/mancave-main",
     name: "Multi-Pane Screen",
     tagline: "Composable companion multi-pane TV kiosk presets",
-    desc: "Named split presets (mancave-main, dual, grid-ticker, quad, triple) with custom split ratios and embedded child views for whole-room multi-screen displays.",
+    desc: "Named split presets (mancave-main, dual, dual-vs, grid-ticker, quad, triple) with custom split ratios and embedded child views for whole-room multi-screen displays.",
     bestFor: "Mancave main TV, multi-view wall, multi-game companion setup",
     aspect: "16:9 Landscape, Portrait, or Ultrawide",
+    category: "preset",
+  },
+  {
+    id: "screen",
+    basePath: "/screen/dual-vs",
+    name: "Dual Matchup VS Preset",
+    tagline: "Arena face-off across two 50/50 panes",
+    desc: "Multi-pane preset splitting Away and Home onto two synchronized halves with facing stadium chevrons. Ideal for wide screens or dual-TV testing.",
+    bestFor: "Dual TV wall, ultra-wide companion monitor, sports bar face-off",
+    aspect: "Ultrawide or 16:9 Landscape",
     category: "preset",
   },
 ];
@@ -101,6 +111,7 @@ export default function Displays({ base }: { base: string }) {
   const [leagueFilter, setLeagueFilter] = useState<string>("");
   const [onlyMine, setOnlyMine] = useState<boolean>(false);
   const [sbMode, setSbMode] = useState<"default" | "hero_only" | "no_rotate">("default");
+  const [matchupSide, setMatchupSide] = useState<"both" | "away" | "home">("both");
 
   const copy = async (url: string) => {
     await copyText(url);
@@ -118,6 +129,7 @@ export default function Displays({ base }: { base: string }) {
       if (sbMode === "no_rotate") parts.push("break_rotate=0");
     } else if (screen.id === "matchup") {
       parts.push("game=auto");
+      if (matchupSide !== "both") parts.push(`side=${matchupSide}`);
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
       if (onlyMine) parts.push("only=mine");
     } else if (screen.id === "plate") {
@@ -134,7 +146,8 @@ export default function Displays({ base }: { base: string }) {
     } else if (screen.id === "screen") {
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
       if (onlyMine) parts.push("only=mine");
-      return `${origin}/screen/mancave-main${parts.length ? `?${parts.join("&")}` : ""}`;
+      const base = screen.basePath.startsWith("/") ? screen.basePath : `/${screen.basePath}`;
+      return `${origin}${base}${parts.length ? `?${parts.join("&")}` : ""}`;
     }
 
     const path = `/${screen.id}${parts.length ? `?${parts.join("&")}` : ""}`;
@@ -177,6 +190,18 @@ export default function Displays({ base }: { base: string }) {
               <option value="default">Default (Scoreboard + Break Screens)</option>
               <option value="hero_only">Hero Only (Never show side panel)</option>
               <option value="no_rotate">Lock Live (Never rotate to intermission screens)</option>
+            </select>
+          </Field>
+
+          <Field label="Matchup Face-Off Mode" hint="Applies to /matchup and /vs (Dual-Screen)">
+            <select
+              className={inputCls}
+              value={matchupSide}
+              onChange={(e) => setMatchupSide(e.target.value as "both" | "away" | "home")}
+            >
+              <option value="both">Both Teams (Single Screen)</option>
+              <option value="away">Away Team (Left TV Screen - side=away)</option>
+              <option value="home">Home Team (Right TV Screen - side=home)</option>
             </select>
           </Field>
 

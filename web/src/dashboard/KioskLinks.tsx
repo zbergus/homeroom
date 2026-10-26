@@ -18,7 +18,9 @@ const VIEWS: KioskLinkItem[] = [
   { path: "/ticker", name: "Dual-Banner Ticker", desc: "Full-colour dual-banner LED scrolling score ticker", category: "primary" },
 
   // Companion Screens
-  { path: "/matchup?game=auto", name: "Matchup / VS Screen", desc: "Dedicated pregame matchup with puck drop countdown, starting goalie duel, team crests, and records", category: "companion" },
+  { path: "/matchup?game=auto", name: "Matchup / VS Screen", desc: "Pregame countdown, starting goalie duel, live score updates, and postgame recap", category: "companion" },
+  { path: "/matchup?game=auto&side=away", name: "Matchup VS (Away · Left TV)", desc: "Left screen of a dual-TV face-off dedicated to the Away team with VS ▶ chevron", category: "companion" },
+  { path: "/matchup?game=auto&side=home", name: "Matchup VS (Home · Right TV)", desc: "Right screen of a dual-TV face-off dedicated to the Home team with ◀ VS chevron", category: "companion" },
   { path: "/plate?game=auto", name: "Scoreboard Plate", desc: "Compact scoreboard plate for secondary screens without break-screen takeovers", category: "companion" },
   { path: "/plate?team=auto", name: "Single-Team Score Plate", desc: "Score plate dedicated to your followed team with team colors, opponent context, and power play alerts", category: "companion" },
   { path: "/tracker?game=auto", name: "Player Tracker", desc: "Live on-ice skater stats (TOI, SOG, +/-, goals, assists) and goalie performance companion screen", category: "companion" },
@@ -26,6 +28,7 @@ const VIEWS: KioskLinkItem[] = [
   // Multi-Pane Presets
   { path: "/screen/mancave-main", name: "Mancave Main Display", desc: "Multi-pane preset: 70/30 split of primary live scoreboard + side player tracker", category: "preset" },
   { path: "/screen/dual", name: "Dual Display (50/50)", desc: "Multi-pane preset: 50/50 horizontal split of scoreboard and live ticker", category: "preset" },
+  { path: "/screen/dual-vs", name: "Dual Matchup VS (50/50)", desc: "Multi-pane preset: synchronized 50/50 dual screen face-off of Away vs Home", category: "preset" },
   { path: "/screen/grid-ticker", name: "Grid + Ticker Banner", desc: "Multi-pane preset: multi-game grid on top with live ticker banner on bottom", category: "preset" },
   { path: "/screen/quad", name: "Quad Companion 2x2", desc: "Multi-pane preset: 4-way split of Scoreboard, Player Tracker, Plate, and Ticker", category: "preset" },
 ];
