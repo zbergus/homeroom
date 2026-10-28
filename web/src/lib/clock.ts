@@ -13,7 +13,8 @@ import type { Game } from "../types";
 
 type ClockFields = Pick<Game, "clock"> & Partial<Pick<Game, "id" | "period" | "clock_s" | "clock_running" | "clock_dir" | "clock_at_ms">>;
 
-const MAX_ADVANCE_S = 10;
+const LINEAR_ADVANCE_S = 12;
+const MAX_ADVANCE_S = 30;
 
 /** Preserve snapshot age without requiring the kiosk's clock to match the server's. */
 export function localClock(game: Game, serverNowMs: number | undefined, receivedAtMs: number): Game {
@@ -36,7 +37,14 @@ export function interpolateClock(game: ClockFields, receivedAtMs: number, nowMs:
     return { seconds: typeof base === "number" && Number.isFinite(base) ? base : null, text: game.clock ?? "" };
   }
   const anchor = typeof game.clock_at_ms === "number" && Number.isFinite(game.clock_at_ms) ? game.clock_at_ms : receivedAtMs;
-  const dt = Math.min(MAX_ADVANCE_S, Math.max(0, nowMs - anchor) / 1000);
+  const rawElapsed = Math.max(0, nowMs - anchor) / 1000;
+  // Soft deceleration when polling lags:
+  // - 0s to 12s (LINEAR_ADVANCE_S): 1.0x real-time speed (dt advances 1s per wall-clock second)
+  // - 12s to 30s (MAX_ADVANCE_S): gently decelerates (0.5x) so clock slows down instead of freezing abruptly
+  // - Max advance capped at 21s total (12s + 18s*0.5)
+  const dt = rawElapsed <= LINEAR_ADVANCE_S
+    ? rawElapsed
+    : LINEAR_ADVANCE_S + Math.min(MAX_ADVANCE_S - LINEAR_ADVANCE_S, rawElapsed - LINEAR_ADVANCE_S) * 0.5;
   const seconds = Math.max(0, base - dt);
   return { seconds, text: formatClock(Math.ceil(seconds)) };
 }
@@ -48,14 +56,58 @@ export function useGameClock(game: ClockFields | undefined, tickMs = 250): Clock
   // clock_s value, running flag, direction, or the server's clock_at_ms anchor).
   const sig = game ? `${game.id}|${game.period}|${game.clock_s}|${game.clock_running}|${game.clock_dir}|${game.clock_at_ms}` : "";
   const at = useRef({ sig, t: Date.now() });
-  if (at.current.sig !== sig) at.current = { sig, t: Date.now() };
+
+  // Slewing/smoothing ref across anchor transitions
+  // If the new target clock differs slightly (e.g. <= 2.5s) from where we currently are,
+  // we smoothly blend the difference over ~1.2s instead of snapping instantly.
+  const slew = useRef<{ offset: number; startedAt: number; durationMs: number }>({ offset: 0, startedAt: 0, durationMs: 0 });
+
   const running = !!game?.clock_running && typeof game?.clock_s === "number";
   const [now, setNow] = useState(() => Date.now());
+
+  if (at.current.sig !== sig) {
+    if (game && running) {
+      // Calculate where the clock was right before this re-anchor
+      const prevReading = interpolateClock(game, at.current.t, Date.now());
+      at.current = { sig, t: Date.now() };
+      const newReading = interpolateClock(game, at.current.t, Date.now());
+
+      if (prevReading.seconds !== null && newReading.seconds !== null) {
+        const diff = prevReading.seconds - newReading.seconds;
+        // If small difference (between -2.5s and +2.5s), blend smoothly over 1200ms
+        if (Math.abs(diff) > 0.05 && Math.abs(diff) <= 2.5) {
+          slew.current = { offset: diff, startedAt: Date.now(), durationMs: 1200 };
+        } else {
+          slew.current = { offset: 0, startedAt: 0, durationMs: 0 };
+        }
+      }
+    } else {
+      at.current = { sig, t: Date.now() };
+      slew.current = { offset: 0, startedAt: 0, durationMs: 0 };
+    }
+  }
+
   useEffect(() => {
     if (!running) return;
     const i = setInterval(() => setNow(Date.now()), tickMs);
     return () => clearInterval(i);
   }, [running, tickMs]);
+
   if (!game) return { seconds: null, text: "", running: false };
-  return { ...interpolateClock(game, at.current.t, Math.max(now, at.current.t)), running };
+
+  const reading = interpolateClock(game, at.current.t, Math.max(now, at.current.t));
+  if (reading.seconds === null || !running || slew.current.offset === 0) {
+    return { ...reading, running };
+  }
+
+  // Apply decayed slew offset
+  const elapsedSlew = Math.max(0, now - slew.current.startedAt);
+  if (elapsedSlew >= slew.current.durationMs) {
+    slew.current.offset = 0;
+    return { ...reading, running };
+  }
+
+  const factor = 1 - elapsedSlew / slew.current.durationMs;
+  const smoothedSeconds = Math.max(0, reading.seconds + slew.current.offset * factor);
+  return { seconds: smoothedSeconds, text: formatClock(Math.ceil(smoothedSeconds)), running };
 }

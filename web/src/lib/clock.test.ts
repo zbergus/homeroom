@@ -33,7 +33,7 @@ describe("delayed clock playback", () => {
 
   it("bounds stale extrapolation and never goes below zero", () => {
     const game = { clock: "10:00", clock_s: 600, clock_running: true, clock_at_ms: 36000 };
-    expect(interpolateClock(game, 36000, 360000).seconds).toBe(590);
+    expect(interpolateClock(game, 36000, 360000).seconds).toBe(579);
     expect(interpolateClock({ ...game, clock_s: 2 }, 36000, 50000).seconds).toBe(0);
   });
 
