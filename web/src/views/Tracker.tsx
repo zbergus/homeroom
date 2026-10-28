@@ -731,7 +731,10 @@ export default function Tracker() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [currentGame?.id, currentGame?.period, currentGame?.clock, currentGame?.home.score, currentGame?.away.score]);
+    // Deliberately excludes `currentGame?.clock` — the formatted clock string changes every
+    // server poll and would restart the fetch interval every second. Score and period changes
+    // are sufficient triggers to refresh the boxscore without hammering the server.
+  }, [currentGame?.id, currentGame?.period, currentGame?.home.score, currentGame?.away.score]);
 
   // Keyboard navigation
   const cycleGame = useCallback((direction: 1 | -1) => {

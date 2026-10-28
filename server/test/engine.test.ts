@@ -198,6 +198,44 @@ describe("Engine", () => {
     }
   });
 
+  it("preserves clock_at_ms anchor on repeated NHL polls with unchanged clock_s", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const engine = new Engine(new Store(":memory:"));
+    try {
+      engine.ingestEspn(mk());
+      engine.ingestNhl("nhl:1", {
+        id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+        state: "in", period: 1, clock: "09:00", clockS: 540, clockRunning: true, inIntermission: false,
+        homeScore: 0, awayScore: 0, goals: [],
+      });
+      expect(engine.games.get("nhl:1")?.clock_at_ms).toBe(1000);
+
+      // 1.5s later, next poll arrives with identical clockS=540 while clock is running
+      vi.advanceTimersByTime(1500);
+      engine.ingestNhl("nhl:1", {
+        id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+        state: "in", period: 1, clock: "09:00", clockS: 540, clockRunning: true, inIntermission: false,
+        homeScore: 0, awayScore: 0, goals: [],
+      });
+      // clock_at_ms anchor MUST remain 1000 so the client's interpolation does not jump backwards
+      expect(engine.games.get("nhl:1")?.clock_at_ms).toBe(1000);
+
+      // When clockS finally ticks down to 538 at t=3500ms, anchor updates to 3500ms
+      vi.advanceTimersByTime(1000);
+      engine.ingestNhl("nhl:1", {
+        id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+        state: "in", period: 1, clock: "08:58", clockS: 538, clockRunning: true, inIntermission: false,
+        homeScore: 0, awayScore: 0, goals: [],
+      });
+      expect(engine.games.get("nhl:1")?.clock_at_ms).toBe(3500);
+      expect(engine.games.get("nhl:1")?.clock_s).toBe(538);
+    } finally {
+      engine.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("stamps fresh ESPN observations before preserving an authoritative clock", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1000);

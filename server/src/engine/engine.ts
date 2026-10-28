@@ -246,17 +246,33 @@ export class Engine extends EventEmitter<EngineEvents> {
     const league = leagueById(prev.league);
     const abbr = (a: string) => (a === n.homeAbbr ? prev.home.abbr : a === n.awayAbbr ? prev.away.abbr : a);
     const status = n.state === "pre" ? prev.status : n.state;
+    const nextPeriod = status === "pre" ? 0 : n.period;
+    const nextClockS = status === "in" && !isShootout(league, n.period) ? n.clockS : undefined;
+    const nextRunning = status === "in" && !isShootout(league, n.period) ? n.clockRunning : false;
+    const nextIntermission = status === "in" && n.inIntermission;
+
+    // Preserve clock anchor when clock numeric state and running status have not changed.
+    // If we re-anchor to this.now() on every poll while clock_s is identical, the client's
+    // interpolated countdown jumps backward repeatedly until the provider's clock_s advances.
+    const clockUnchanged =
+      prev.status === status &&
+      prev.period === nextPeriod &&
+      prev.intermission === nextIntermission &&
+      prev.clock_running === nextRunning &&
+      prev.clock_s === nextClockS &&
+      typeof prev.clock_at_ms === "number";
+
     const next: Game = {
       ...prev,
       status,
-      period: status === "pre" ? 0 : n.period,
+      period: nextPeriod,
       period_label: status === "pre" ? "" : periodLabel(league, n.period),
       clock: status === "in" && !isShootout(league, n.period) ? n.clock : "",
-      clock_s: status === "in" && !isShootout(league, n.period) ? n.clockS : undefined,
-      clock_running: status === "in" && !isShootout(league, n.period) ? n.clockRunning : false,
+      clock_s: nextClockS,
+      clock_running: nextRunning,
       clock_dir: "down",
-      clock_at_ms: this.now(),
-      intermission: status === "in" && n.inIntermission,
+      clock_at_ms: clockUnchanged ? prev.clock_at_ms : this.now(),
+      intermission: nextIntermission,
       home: { ...prev.home, score: n.homeScore },
       away: { ...prev.away, score: n.awayScore },
       goals: n.goals.length >= prev.goals.length ? n.goals.map((g) => ({ ...g, team_abbr: abbr(g.team_abbr) })) : prev.goals,

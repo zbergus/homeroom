@@ -42,7 +42,11 @@ export function interpolateClock(game: ClockFields, receivedAtMs: number, nowMs:
 }
 
 export function useGameClock(game: ClockFields | undefined, tickMs = 250): ClockReading & { running: boolean } {
-  const sig = game ? `${game.id}|${game.period}|${game.clock}|${game.clock_s}|${game.clock_running}|${game.clock_dir}|${game.clock_at_ms}` : "";
+  // Sig deliberately excludes `clock` (the formatted string) because that changes every server
+  // poll tick and would reset the local anchor, causing the displayed clock to stutter/jump back
+  // on each update. We only re-anchor when the underlying numeric state changes (new period,
+  // clock_s value, running flag, direction, or the server's clock_at_ms anchor).
+  const sig = game ? `${game.id}|${game.period}|${game.clock_s}|${game.clock_running}|${game.clock_dir}|${game.clock_at_ms}` : "";
   const at = useRef({ sig, t: Date.now() });
   if (at.current.sig !== sig) at.current = { sig, t: Date.now() };
   const running = !!game?.clock_running && typeof game?.clock_s === "number";
