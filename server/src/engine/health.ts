@@ -47,6 +47,8 @@ export class ProviderHealth {
   success(id: string): void {
     const r = this.rec(id);
     r.lastAttempt = r.lastSuccess = this.now();
+    r.lastError = null;
+    r.lastErrorAt = null;
     r.failures = 0;
     r.failingSince = null;
   }

@@ -29,7 +29,7 @@ describe("ProviderHealth", () => {
     const [row] = h.snapshot();
     expect(row).toMatchObject({ id: "nhl", consecutive_failures: 2, last_error: "HTTP 503", last_success_at: 1_000_000, failing_since: 1_010_000 });
     h.success("nhl");
-    expect(h.snapshot()[0]).toMatchObject({ consecutive_failures: 0, failing_since: null, state: "ok" });
+    expect(h.snapshot()[0]).toMatchObject({ consecutive_failures: 0, failing_since: null, state: "ok", last_error: null, last_error_at: null });
   });
 
   it("warns only for live-relevant providers: failing > 60 s, or no data > 5 min", () => {

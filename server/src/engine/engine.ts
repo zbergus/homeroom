@@ -61,7 +61,8 @@ export class Engine extends EventEmitter<EngineEvents> {
   private buffer: DelayBuffer<Out>;
   private chains = new Map<string, Promise<void>>();
   private nhlSeen = new Map<string, number>();
-  private lastDecrease = new Map<string, { home: number; away: number; at: number }>();
+  /** Score drops and the goal ids that disappeared with them, so a rebound with a new id is not mistaken for a flap. */
+  private lastDecrease = new Map<string, { home: number; away: number; at: number; keys: Set<string> }>();
   private settingsCache?: Settings | undefined;
   private synced?: Set<string> | undefined;
   private favs?: Set<string> | undefined;
@@ -200,8 +201,12 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   // ---- ingest --------------------------------------------------------------------------------
-  /** Feed a fresh ESPN snapshot of a game. */
-  ingestEspn(incoming: Game): void {
+  /**
+   * Feed an ESPN snapshot. `sourceFetchedAt` is when the HTTP request started: a poll that began
+   * before an NHL update but finishes after it carries stale scores and must not overwrite them,
+   * however long the request took. Defaults to now for callers without timing information.
+   */
+  ingestEspn(incoming: Game, sourceFetchedAt: number = this.now()): void {
     const prev = this.games.get(incoming.id);
     let next: Game = { ...incoming, clock_at_ms: this.now(), authority: incoming.authority ?? "espn" };
     if (prev) {
@@ -215,7 +220,8 @@ export class Engine extends EventEmitter<EngineEvents> {
         situation: prev.situation,
         authority: "espn",
       };
-      const freshNhl = prev.authority === "nhl" && this.now() - (this.nhlSeen.get(prev.id) ?? 0) < NHL_AUTHORITY_MS;
+      const nhlAt = this.nhlSeen.get(prev.id) ?? 0;
+      const freshNhl = prev.authority === "nhl" && (sourceFetchedAt <= nhlAt || this.now() - nhlAt < NHL_AUTHORITY_MS);
       if (freshNhl) {
         // Authoritative feed owns the live fields; ESPN only contributes presentation data
         next = {
@@ -307,16 +313,19 @@ export class Engine extends EventEmitter<EngineEvents> {
     else this.pushOut({ kind: "game", game: next }, delay, next.id);
   }
 
-  /** A score drop followed by a return to the old score soon after is almost always a provider flap. */
+  /** A score drop followed by a return with the *same goal id* is a provider flap; a new id is a real goal. */
   private suppressFlaps(prev: Game, next: Game, dets: Detected[]): Detected[] {
     if (next.home.score < prev.home.score || next.away.score < prev.away.score) {
-      this.lastDecrease.set(next.id, { home: prev.home.score, away: prev.away.score, at: this.now() });
+      const nextKeys = new Set(next.goals.map((g) => g.key));
+      const keys = new Set(prev.goals.map((g) => g.key).filter((k) => !nextKeys.has(k)));
+      this.lastDecrease.set(next.id, { home: prev.home.score, away: prev.away.score, at: this.now(), keys });
       return dets;
     }
     const d = this.lastDecrease.get(next.id);
     if (d && this.now() - d.at < FLAP_WINDOW_MS && next.home.score === d.home && next.away.score === d.away) {
       this.lastDecrease.delete(next.id);
-      return dets.filter((x) => x.type !== "goal");
+      // Without a provider goal id we cannot distinguish, so keep the conservative filter.
+      return dets.filter((x) => x.type !== "goal" || (!!x.play?.key && !d.keys.has(x.play.key)));
     }
     return dets;
   }

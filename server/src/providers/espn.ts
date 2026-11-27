@@ -164,7 +164,9 @@ export async function fetchScoreboardDay(leagueId: string, date?: string): Promi
   // AHL: fetched through dedicated HockeyTech provider
   if (league.id === "ahl") {
     const games = await fetchAhlScoreboard(league);
-    return { games, day: date };
+    // HockeyTech's scorebar has no date parameter: never present today's games as tomorrow's.
+    const filtered = date ? games.filter((g) => g.start_time.slice(0, 10).replaceAll("-", "") === date) : games;
+    return { games: filtered, day: date };
   }
 
   // IIHF: international tournaments covering Olympics, World Juniors, World Championships
@@ -180,6 +182,10 @@ export async function fetchScoreboardDay(leagueId: string, date?: string): Promi
         };
       }),
     );
+    if (tournamentResults.length > 0 && tournamentResults.every((r) => r.status === "rejected")) {
+      const reason = tournamentResults[0]?.status === "rejected" ? String(tournamentResults[0].reason) : "unknown error";
+      throw new Error(`all IIHF tournament scoreboards failed: ${reason.slice(0, 160)}`);
+    }
     const allGames: Game[] = [];
     let reportDay: string | undefined = undefined;
     for (const res of tournamentResults) {
