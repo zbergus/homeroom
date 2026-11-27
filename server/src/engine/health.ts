@@ -3,6 +3,8 @@
  * can change shape or start failing without any user-visible symptom except "nothing happens", so this is what
  * /api/status and the dashboard use to say so.
  */
+import { redactSecrets } from "../logger.js";
+
 interface ProviderRow {
   id: string;
   last_success_at: number | null;
@@ -53,8 +55,8 @@ export class ProviderHealth {
     const r = this.rec(id);
     const t = this.now();
     r.lastAttempt = r.lastErrorAt = t;
-    // never keep more than a short message (it is shown in the UI; it must not carry URLs with secrets)
-    r.lastError = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+    // never keep more than a short message (it is shown in /api/status; upstream errors can embed a URL with an API key)
+    r.lastError = redactSecrets(err instanceof Error ? err.message : String(err)).slice(0, 200);
     r.failures++;
     r.failingSince ??= t;
   }

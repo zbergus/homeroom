@@ -55,13 +55,20 @@ function sanitizeValue(val: unknown, depth = 0): unknown {
   return val;
 }
 
+/** Redacts credential-bearing query values in free-form error text before it reaches the UI. */
+export function redactSecrets(text: string): string {
+  return text.replace(/([?&](?:token|key|api_key|apikey|secret|password)=)[^&\s"']+/gi, "$1[REDACTED]");
+}
+
 export function sanitizeUrl(rawUrl: string): string {
   try {
     const u = new URL(rawUrl, "http://127.0.0.1");
-    if (u.searchParams.has("token")) u.searchParams.set("token", "[REDACTED]");
+    for (const name of ["token", "key", "api_key", "apikey", "secret", "password"]) {
+      if (u.searchParams.has(name)) u.searchParams.set(name, "[REDACTED]");
+    }
     return u.pathname + (u.search ? u.search : "");
   } catch {
-    return rawUrl.replace(/([?&]token=)[^&]+/gi, "$1[REDACTED]");
+    return redactSecrets(rawUrl);
   }
 }
 

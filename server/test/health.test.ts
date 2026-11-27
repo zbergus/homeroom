@@ -54,6 +54,14 @@ describe("ProviderHealth", () => {
     expect(h.warnings(new Set(["nhl"])).join()).toMatch(/nhl has returned no data for 6 min/);
   });
 
+  it("redacts upstream API keys from the error text shown in /api/status", () => {
+    const h = new ProviderHealth();
+    h.failure("ahl", new Error("500 https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&key=SUPERSECRET&fmt=json"));
+    const row = h.snapshot()[0];
+    expect(row.last_error).toContain("key=[REDACTED]");
+    expect(row.last_error).not.toContain("SUPERSECRET");
+  });
+
   it("track() records failures but can skip counting a secondary call's success", async () => {
     const h = new ProviderHealth();
     await expect(h.track("nhl", async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
