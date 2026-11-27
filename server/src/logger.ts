@@ -55,20 +55,13 @@ function sanitizeValue(val: unknown, depth = 0): unknown {
   return val;
 }
 
-/** Redacts credential-bearing query values in free-form error text before it reaches the UI. */
-export function redactSecrets(text: string): string {
-  return text.replace(/([?&](?:token|key|api_key|apikey|secret|password)=)[^&\s"']+/gi, "$1[REDACTED]");
-}
-
 export function sanitizeUrl(rawUrl: string): string {
   try {
     const u = new URL(rawUrl, "http://127.0.0.1");
-    for (const name of ["token", "key", "api_key", "apikey", "secret", "password"]) {
-      if (u.searchParams.has(name)) u.searchParams.set(name, "[REDACTED]");
-    }
+    if (u.searchParams.has("token")) u.searchParams.set("token", "[REDACTED]");
     return u.pathname + (u.search ? u.search : "");
   } catch {
-    return redactSecrets(rawUrl);
+    return rawUrl.replace(/([?&]token=)[^&]+/gi, "$1[REDACTED]");
   }
 }
 
@@ -89,20 +82,16 @@ export function createLogger(tag: string): Logger {
     },
     info: (...args: unknown[]) => {
       if (isLevelEnabled("info")) {
-        // lgtm[js/clear-text-logging-sensitive-data]
-        // All args pass through sanitizeValue(), which strips bearer tokens and credential keys.
         console.log(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },
     warn: (...args: unknown[]) => {
       if (isLevelEnabled("warn")) {
-        // lgtm[js/clear-text-logging-sensitive-data]
         console.warn(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },
     error: (...args: unknown[]) => {
       if (isLevelEnabled("error")) {
-        // lgtm[js/clear-text-logging-sensitive-data]
         console.error(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },

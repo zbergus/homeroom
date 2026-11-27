@@ -3,7 +3,7 @@
  * can change shape or start failing without any user-visible symptom except "nothing happens", so this is what
  * /api/status and the dashboard use to say so.
  */
-import { redactSecrets } from "../logger.js";
+import { redactSecrets } from "../security.js";
 
 interface ProviderRow {
   id: string;
