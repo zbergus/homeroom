@@ -89,16 +89,20 @@ export function createLogger(tag: string): Logger {
     },
     info: (...args: unknown[]) => {
       if (isLevelEnabled("info")) {
+        // lgtm [js/clear-text-logging-sensitive-data]
+        // All args pass through sanitizeValue(), which strips bearer tokens and credential keys.
         console.log(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },
     warn: (...args: unknown[]) => {
       if (isLevelEnabled("warn")) {
+        // lgtm [js/clear-text-logging-sensitive-data]
         console.warn(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },
     error: (...args: unknown[]) => {
       if (isLevelEnabled("error")) {
+        // lgtm [js/clear-text-logging-sensitive-data]
         console.error(prefix, ...args.map((a) => sanitizeValue(a)));
       }
     },
