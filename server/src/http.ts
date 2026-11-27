@@ -269,14 +269,18 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return engine.fireTrigger(o);
   };
 
-  app.post("/api/trigger", async (req) => {
-    return { ok: true, event: fire(TriggerBodySchema.safeParse(req.body ?? {}).data ?? {}) };
+  app.post("/api/trigger", async (req, reply) => {
+    const parsed = TriggerBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: "invalid trigger body" });
+    return { ok: true, event: fire(parsed.data) };
   });
 
   // For Stream Deck / HA rest_command / physical buttons that can only issue a GET.
   // Side effects on GET are normally avoided, so this one demands the admin token whenever one is configured.
   app.get("/api/hook/:trigger", async (req, reply) => {
-    const q = HookQuerySchema.safeParse(req.query ?? {}).data ?? {};
+    const parsedQuery = HookQuerySchema.safeParse(req.query ?? {});
+    if (!parsedQuery.success) return reply.code(400).send({ error: "invalid hook query" });
+    const q = parsedQuery.data;
     if (admin) {
       if (authFailures.blocked(req.ip)) return reply.code(429).send({ error: "too many failed attempts, try again in a minute" });
       if (!safeEq(bearer(req), admin) && !safeEq(q.token, admin)) {
@@ -288,8 +292,10 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
     return { ok: true, event_id: ev.event_id, type: ev.type };
   });
 
-  app.post("/api/test/goal", async (req) => {
-    const b = TriggerBodySchema.safeParse(req.body ?? {}).data ?? {};
+  app.post("/api/test/goal", async (req, reply) => {
+    const parsed = TriggerBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: "invalid trigger body" });
+    const b = parsed.data;
     return { ok: true, event: fire({ trigger: "goal", league: b.league, team_abbr: b.team_abbr, apply_delay: b.bypass_delay === false }) };
   });
 
@@ -375,7 +381,7 @@ export async function buildHttp(d: Deps): Promise<FastifyInstance> {
       integration: { links: [], devices: devices.length },
       providers: poller.providerRows(),
       server_time: Date.now(),
-      outputs: { rest_events: restOn, pusher_connected: false },
+      outputs: { rest_events: restOn },
       horns: { files: hornFiles, url_check: horn },
       audio: { ffmpeg: audioMode === "ffmpeg", mode: audioMode },
       public_base_url: s.public_base_url,

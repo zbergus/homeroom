@@ -103,7 +103,7 @@ function Events({ rows }: { rows: EventRecord[] }) {
               <td className="truncate px-2 py-2 text-slate-300">{r.league.toUpperCase()}{r.team ? ` ${r.team}` : ""}</td>
               <td className="px-2 py-2"><Badge ok={r.outcome === "delivered"}>{r.outcome}</Badge></td>
               <td className="px-2 py-2 text-slate-400">{r.reason ?? ""}</td>
-              <td className="num px-2 py-2 text-slate-300">{r.sent.pusher_clients} HA · {r.sent.rest ? "REST" : "no REST"} · {r.sent.lights} lights</td>
+              <td className="num px-2 py-2 text-slate-300">{r.sent.rest ? "REST" : "no REST"} · {r.sent.lights} lights</td>
             </tr>
           ))}
         </tbody>

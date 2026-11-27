@@ -1,9 +1,10 @@
+import { RUNTIME_ENV } from "../config.js";
 import { leagueById } from "../leagues.js";
 import type { Game, RosterPlayer } from "../types.js";
 import { digits, getJson, optStr, str } from "./raw.js";
 
-const NHL_BASE = process.env.NHL_BASE ?? "https://api-web.nhle.com/v1";
-const ESPN_SITE_BASE = process.env.ESPN_SITE_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
+const NHL_BASE = RUNTIME_ENV.NHL_BASE ?? "https://api-web.nhle.com/v1";
+const ESPN_SITE_BASE = RUNTIME_ENV.ESPN_SITE_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
 
 const cache = new Map<string, { fetchedAt: number; players: RosterPlayer[] }>();
 const CACHE_MS = 60 * 60 * 1000; // 1 hour

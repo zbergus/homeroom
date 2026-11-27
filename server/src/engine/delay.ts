@@ -20,10 +20,19 @@ export class DelayBuffer<T> {
     return this.queue.length;
   }
 
-  /** Queues (or immediately delivers) an item; returns its scheduled release time (epoch ms). */
+  /** Queues (or immediately delivers) an item after a relative delay; returns its release time. */
   push(item: T, delayMs: number, key = ""): number {
+    return this.pushAt(item, this.now() + Math.max(0, delayMs), key);
+  }
+
+  /**
+   * Queues an item for an absolute release time. Used when several items belong to one detection:
+   * a slow enrichment call must not push an event past the snapshot it belongs to, or viewers see
+   * the score before its horn/overlay. The per-key watermark still prevents overtaking.
+   */
+  pushAt(item: T, at: number, key = ""): number {
     const t = this.now();
-    const at = Math.max(t + Math.max(0, delayMs), this.lastAt.get(key) ?? 0);
+    at = Math.max(at, this.lastAt.get(key) ?? 0);
     this.lastAt.set(key, at);
     if (at <= t && this.queue.length === 0) {
       this.deliver(item);

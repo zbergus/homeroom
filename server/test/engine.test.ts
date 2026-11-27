@@ -90,6 +90,18 @@ describe("Engine", () => {
     expect(events.filter((e) => e.type === "goal")).toHaveLength(2);
   });
 
+  it("a real rebound goal with a new provider id is not suppressed as a flap", async () => {
+    const { engine, events, settle } = setup([]);
+    engine.ingestEspn(mk({ h: 0, goals: [] })); // seed silently
+    engine.ingestEspn(mk({ h: 1, goals: [play(1, "MIN", "Phantom")] }));
+    engine.ingestEspn(mk({ h: 0, goals: [] })); // disallowed: the provider drops goal p1
+    engine.ingestEspn(mk({ h: 1, goals: [play(2, "MIN", "Real")] })); // legitimate rebound with a new id
+    await settle();
+    const goals = events.filter((e) => e.type === "goal");
+    expect(goals).toHaveLength(2);
+    expect(goals[1]?.scoring?.scorer).toBe("Real");
+  });
+
   it("NHL feed is authoritative: stale ESPN scoreboard cannot cause a phantom second goal", async () => {
     const { engine, events, settle } = setup();
     engine.ingestEspn(mk({ h: 0 }));
@@ -106,6 +118,22 @@ describe("Engine", () => {
     expect(goals).toHaveLength(1);
     expect(goals[0].scoring?.scorer).toBe("Danila Yurov");
     expect(engine.games.get("nhl:1")?.home.score).toBe(1);
+  });
+
+  it("a slow ESPN poll started before an NHL update cannot overwrite that update", async () => {
+    const { engine, events, settle } = setup();
+    engine.ingestEspn(mk({ h: 0 }));
+    const startedBeforeNhl = Date.now() - 1000;
+    const nhl: NhlGame = {
+      id: 99, date: "", start_utc: "", homeNick: "wild", awayNick: "blue jackets", homeAbbr: "MIN", awayAbbr: "CBJ",
+      state: "in", period: 1, clock: "09:00", inIntermission: false, homeScore: 1, awayScore: 0,
+      goals: [{ ...play(1, "MIN", "Danila Yurov"), key: "n1" }],
+    };
+    engine.ingestNhl("nhl:1", nhl);
+    engine.ingestEspn(mk({ h: 0 }), startedBeforeNhl); // request began before the NHL goal, arrived after it
+    await settle();
+    expect(engine.games.get("nhl:1")?.home.score).toBe(1);
+    expect(events.filter((e) => e.type === "goal")).toHaveLength(1);
   });
 
   it("delay: events and state snapshots are withheld, in order, until the delay passes", async () => {

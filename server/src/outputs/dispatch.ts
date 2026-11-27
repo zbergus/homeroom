@@ -23,7 +23,7 @@ interface EventRecord {
   outcome: "delivered" | "filtered";
   /** why it was filtered, or a note on what was delivered */
   reason?: string | undefined;
-  sent: { rest: boolean; lights: number; pusher_clients?: number | undefined };
+  sent: { rest: boolean; lights: number };
 }
 
 /** Fixed-size log of what the dispatcher did with each event; feeds the diagnostics panel. */

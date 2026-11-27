@@ -61,7 +61,8 @@ export class Engine extends EventEmitter<EngineEvents> {
   private buffer: DelayBuffer<Out>;
   private chains = new Map<string, Promise<void>>();
   private nhlSeen = new Map<string, number>();
-  private lastDecrease = new Map<string, { home: number; away: number; at: number }>();
+  /** Score drops and the goal ids that disappeared with them, so a rebound with a new id is not mistaken for a flap. */
+  private lastDecrease = new Map<string, { home: number; away: number; at: number; keys: Set<string> }>();
   private settingsCache?: Settings | undefined;
   private synced?: Set<string> | undefined;
   private favs?: Set<string> | undefined;
@@ -200,8 +201,12 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   // ---- ingest --------------------------------------------------------------------------------
-  /** Feed a fresh ESPN snapshot of a game. */
-  ingestEspn(incoming: Game): void {
+  /**
+   * Feed an ESPN snapshot. `sourceFetchedAt` is when the HTTP request started: a poll that began
+   * before an NHL update but finishes after it carries stale scores and must not overwrite them,
+   * however long the request took. Defaults to now for callers without timing information.
+   */
+  ingestEspn(incoming: Game, sourceFetchedAt: number = this.now()): void {
     const prev = this.games.get(incoming.id);
     let next: Game = { ...incoming, clock_at_ms: this.now(), authority: incoming.authority ?? "espn" };
     if (prev) {
@@ -215,7 +220,8 @@ export class Engine extends EventEmitter<EngineEvents> {
         situation: prev.situation,
         authority: "espn",
       };
-      const freshNhl = prev.authority === "nhl" && this.now() - (this.nhlSeen.get(prev.id) ?? 0) < NHL_AUTHORITY_MS;
+      const nhlAt = this.nhlSeen.get(prev.id) ?? 0;
+      const freshNhl = prev.authority === "nhl" && (sourceFetchedAt <= nhlAt || this.now() - nhlAt < NHL_AUTHORITY_MS);
       if (freshNhl) {
         // Authoritative feed owns the live fields; ESPN only contributes presentation data
         next = {
@@ -300,20 +306,26 @@ export class Engine extends EventEmitter<EngineEvents> {
       log.info(`game final: ${next.away.abbr} ${next.away.score} - ${next.home.abbr} ${next.home.score} (${next.league.toUpperCase()})`);
     }
     this.games.set(next.id, next);
-    this.pushOut({ kind: "game", game: next }, this.delayMs(next.id), next.id);
-    if (dets.length && this.isSynced(next.id)) this.enqueue(next, dets);
+    const delay = this.delayMs(next.id);
+    // A synced game with events must publish its snapshot and its events as one batch: building a
+    // goal event awaits the scorer feed, and releasing the score before the event would spoil it.
+    if (dets.length && this.isSynced(next.id)) this.enqueue(next, dets, delay);
+    else this.pushOut({ kind: "game", game: next }, delay, next.id);
   }
 
-  /** A score drop followed by a return to the old score soon after is almost always a provider flap. */
+  /** A score drop followed by a return with the *same goal id* is a provider flap; a new id is a real goal. */
   private suppressFlaps(prev: Game, next: Game, dets: Detected[]): Detected[] {
     if (next.home.score < prev.home.score || next.away.score < prev.away.score) {
-      this.lastDecrease.set(next.id, { home: prev.home.score, away: prev.away.score, at: this.now() });
+      const nextKeys = new Set(next.goals.map((g) => g.key));
+      const keys = new Set(prev.goals.map((g) => g.key).filter((k) => !nextKeys.has(k)));
+      this.lastDecrease.set(next.id, { home: prev.home.score, away: prev.away.score, at: this.now(), keys });
       return dets;
     }
     const d = this.lastDecrease.get(next.id);
     if (d && this.now() - d.at < FLAP_WINDOW_MS && next.home.score === d.home && next.away.score === d.away) {
       this.lastDecrease.delete(next.id);
-      return dets.filter((x) => x.type !== "goal");
+      // Without a provider goal id we cannot distinguish, so keep the conservative filter.
+      return dets.filter((x) => x.type !== "goal" || (!!x.play?.key && !d.keys.has(x.play.key)));
     }
     return dets;
   }
@@ -391,37 +403,49 @@ export class Engine extends EventEmitter<EngineEvents> {
   }
 
   // ---- event building -------------------------------------------------------------------------
-  private enqueue(game: Game, dets: Detected[]): void {
-    const detectedAt = this.now();
+  private enqueue(game: Game, dets: Detected[], delay: number): void {
     const prior = this.chains.get(game.id) ?? Promise.resolve();
     const run = prior
-      .then(() => this.buildAndPush(game, dets, detectedAt))
+      .then(() => this.buildAndPush(game, dets, delay))
       .catch((err) => log.error("event build failed:", err));
     this.chains.set(game.id, run);
   }
 
-  private async buildAndPush(game: Game, dets: Detected[], detectedAt: number): Promise<void> {
-    for (const det of dets) {
-      if (det.type !== "goal" && !det.volatile) {
-        const key = det.key ?? `${game.id}:${det.type}:${det.period ?? ""}`;
-        if (!this.store.markEmitted(key)) continue;
+  /**
+   * Builds all events first, then queues the snapshot and events at one shared release time.
+   * The clock starts after enrichment, so a slow scorer feed delays the whole batch uniformly
+   * instead of leaking the score early. `finally` guarantees viewers still get a snapshot if a
+   * secondary provider throws while building.
+   */
+  private async buildAndPush(game: Game, dets: Detected[], delay: number): Promise<void> {
+    const events: EventPayload[] = [];
+    try {
+      for (const det of dets) {
+        if (det.type !== "goal" && !det.volatile) {
+          const key = det.key ?? `${game.id}:${det.type}:${det.period ?? ""}`;
+          if (!this.store.markEmitted(key)) continue;
+        }
+        if (det.type === "powerplay") {
+          // the same advantage re-reported a moment later (a stoppage re-reads the situation) is not a new power play
+          const k = `${game.id}:${det.team?.abbr}`;
+          if (this.now() - (this.ppLast.get(k) ?? -Infinity) < POWERPLAY_REPEAT_MS) continue;
+          this.ppLast.set(k, this.now());
+        }
+        let play = det.play;
+        if (det.type === "goal" && !play?.scorer) play = (await this.findPlay(game, det)) ?? play;
+        if (det.type === "period_end" || det.type === "game_end") this.refreshAfterBreak(game.id);
+        // state as of detection (a second goal may already have changed the live score), plus the freshest goal list
+        const snapshot: Game = { ...game, goals: this.games.get(game.id)?.goals ?? game.goals };
+        const payload = this.buildEvent(det.type as BuildType, snapshot, { team: det.team, delta: det.delta, play, period: det.period });
+        payload.delay_s = delay / 1000;
+        if (det.type === "goal" && det.team) this.noteGoal(game.id, det.team.abbr);
+        events.push(payload);
       }
-      if (det.type === "powerplay") {
-        // the same advantage re-reported a moment later (a stoppage re-reads the situation) is not a new power play
-        const k = `${game.id}:${det.team?.abbr}`;
-        if (this.now() - (this.ppLast.get(k) ?? -Infinity) < POWERPLAY_REPEAT_MS) continue;
-        this.ppLast.set(k, this.now());
-      }
-      let play = det.play;
-      if (det.type === "goal" && !play?.scorer) play = (await this.findPlay(game, det)) ?? play;
-      if (det.type === "period_end" || det.type === "game_end") this.refreshAfterBreak(game.id);
-      // state as of detection (a second goal may already have changed the live score), plus the freshest goal list
-      const snapshot: Game = { ...game, goals: this.games.get(game.id)?.goals ?? game.goals };
-      const payload = this.buildEvent(det.type as BuildType, snapshot, { team: det.team, delta: det.delta, play, period: det.period });
-      const delay = this.delayMs(game.id);
-      payload.delay_s = delay / 1000;
-      if (det.type === "goal" && det.team) this.noteGoal(game.id, det.team.abbr);
-      this.pushOut({ kind: "event", payload }, Math.max(0, delay - (this.now() - detectedAt)), game.id);
+    } finally {
+      const releaseAt = this.now() + delay;
+      const latest = this.games.get(game.id) ?? game;
+      this.pushOut({ kind: "game", game: latest }, 0, game.id, releaseAt);
+      for (const payload of events) this.pushOut({ kind: "event", payload }, delay, game.id, releaseAt);
     }
   }
 
@@ -771,24 +795,25 @@ export class Engine extends EventEmitter<EngineEvents> {
   // *released* (post-delay) snapshot of each game. Raw state is never persisted: it is re-read from the providers.
 
   /** Every buffer push goes through here so queued events are written to SQLite until they are released. */
-  private pushOut(o: Out, delayMs: number, key: string): void {
+  private pushOut(o: Out, delayMs: number, key: string, at?: number): number {
     const queuedAt = this.now();
     if (o.kind === "game") {
       // Enrichment and secondary-provider updates must not make an old clock look fresh.
       o = { kind: "game", game: { ...o.game, clock_at_ms: (o.game.clock_at_ms ?? queuedAt) + delayMs } };
     }
-    const at = this.buffer.push(o, delayMs, key);
-    if (o.kind === "game") o.game.clock_at_ms = (o.game.clock_at_ms ?? at) + at - queuedAt - delayMs;
+    const releasedAt = at === undefined ? this.buffer.push(o, delayMs, key) : this.buffer.pushAt(o, at, key);
+    if (o.kind === "game") o.game.clock_at_ms = (o.game.clock_at_ms ?? releasedAt) + releasedAt - queuedAt - delayMs;
     if (o.kind === "event") {
       log.info(`queued event: ${o.payload.type} for ${o.payload.game.away.abbr} @ ${o.payload.game.home.abbr} (${(delayMs / 1000).toFixed(1)}s delay)`);
     }
-    if (o.kind === "event" && at > this.now()) {
+    if (o.kind === "event" && releasedAt > this.now()) {
       try {
-        this.store.savePending(o.payload.event_id, o.payload.game.id, at, JSON.stringify(o.payload));
+        this.store.savePending(o.payload.event_id, o.payload.game.id, releasedAt, JSON.stringify(o.payload));
       } catch (err) {
         log.error("could not persist pending event:", errMsg(err));
       }
     }
+    return releasedAt;
   }
 
   private dropPending(eventId: string): void {

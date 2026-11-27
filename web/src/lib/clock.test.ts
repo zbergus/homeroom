@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpolateClock, localClock } from "./clock";
+import { interpolateClock, localClock, reanchorSlew } from "./clock";
 import type { Game } from "../types";
 
 describe("delayed clock playback", () => {
@@ -35,6 +35,15 @@ describe("delayed clock playback", () => {
     const game = { clock: "10:00", clock_s: 600, clock_running: true, clock_at_ms: 36000 };
     expect(interpolateClock(game, 36000, 360000).seconds).toBe(579);
     expect(interpolateClock({ ...game, clock_s: 2 }, 36000, 50000).seconds).toBe(0);
+  });
+
+  it("slews from the previous snapshot's reading, not from the snapshot being re-anchored", () => {
+    const prev = { clock: "10:02", clock_s: 602, clock_running: true, clock_at_ms: 1000 };
+    const next = { clock: "9:58", clock_s: 598, clock_running: true, clock_at_ms: 6000 };
+    expect(reanchorSlew(prev, next, 1000, 6000)).toBe(-1); // old reading 597 vs new 598
+    expect(reanchorSlew(next, next, 1000, 6000)).toBe(0); // the old inert implementation
+    expect(reanchorSlew({ ...prev, clock_s: 700 }, next, 1000, 6000)).toBe(0); // large jumps still snap
+    expect(reanchorSlew(undefined, next, 1000, 6000)).toBe(0);
   });
 
   it("supports legacy snapshots, fractional clocks, missing data, and future anchors", () => {

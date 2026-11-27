@@ -6,6 +6,27 @@ import { setLogLevel } from "./logger.js";
 const blankToUndefined = (v: unknown) => (v === "" ? undefined : v);
 const blank = <T extends z.ZodType>(s: T) => z.preprocess(blankToUndefined, s);
 
+/**
+ * Provider URLs / paths. Read once at module load, before any provider or store import, so a
+ * process (or the simulator) can point every feed at a local replay server consistently.
+ */
+const RuntimeEnvSchema = z.object({
+  DATA_DIR: blank(z.string().optional()),
+  MEDIA_DIR: blank(z.string().optional()),
+  WEB_DIR: blank(z.string().optional()),
+  PUBLIC_BASE_URL: blank(z.string().url().optional()),
+  NHL_BASE: blank(z.string().url().optional()),
+  ESPN_BASE: blank(z.string().url().optional()),
+  ESPN_WEB_BASE: blank(z.string().url().optional()),
+  ESPN_SITE_BASE: blank(z.string().url().optional()),
+  AHL_KEY: blank(z.string().default("ccb91f29d6744675")), // public HockeyTech feed key, not a user secret
+  AHL_CLIENT: blank(z.string().default("ahl")),
+  AHL_BASE: blank(z.string().url().default("https://lscluster.hockeytech.com/feed/index.php")),
+});
+
+/** Single parsed snapshot for module-level provider/store settings (no logging side effects). */
+export const RUNTIME_ENV = RuntimeEnvSchema.parse(process.env);
+
 const EnvSchema = z.object({
   PORT: blank(z.coerce.number().int().min(0).max(65535).default(8080)),
   LOG_LEVEL: blank(z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("warn")),

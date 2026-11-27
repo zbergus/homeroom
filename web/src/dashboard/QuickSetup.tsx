@@ -78,7 +78,7 @@ export default function QuickSetup({ settings, sync, onNavigate }: Props) {
     {
       num: 3,
       title: "Goal Horns & Lights",
-      desc: "Customize light flashes and goal horn audio to play when your team scores.",
+      desc: "Optional: customize light flashes and goal horn audio to play when your team scores.",
       done: false,
       actionText: "Customize",
       action: () => onNavigate("celebrations"),
@@ -86,7 +86,7 @@ export default function QuickSetup({ settings, sync, onNavigate }: Props) {
     {
       num: 4,
       title: "Launch TV Scoreboard",
-      desc: "Open full-screen live scoreboards, game grid, or LED ticker on your TV or tablet.",
+      desc: "Optional: open full-screen live scoreboards, game grid, or LED ticker on your TV or tablet.",
       done: false,
       actionText: "View Screens",
       action: () => onNavigate("displays"),
@@ -103,7 +103,7 @@ export default function QuickSetup({ settings, sync, onNavigate }: Props) {
             <span className="grid h-6 w-6 place-items-center rounded-full bg-accent text-xs font-black text-white">✓</span>
             <h2 className="text-base font-black tracking-tight text-white sm:text-lg">Quick Setup Checklist</h2>
             <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-bold text-accent-soft">
-              {completedCount} of 4 complete
+              {completedCount} of 2 required steps complete
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400 sm:text-sm">

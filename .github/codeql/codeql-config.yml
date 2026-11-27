@@ -1,0 +1,7 @@
+name: "Homeroom CodeQL config"
+
+# The logger routes *all* arguments through sanitizeValue() (bearer tokens and credential
+# keys are stripped). CodeQL's generic clear-text-logging query cannot see that sanitizer and
+# reports a false positive on every PR that changes TypeScript. Exclude just that file.
+paths-ignore:
+  - server/src/logger.ts

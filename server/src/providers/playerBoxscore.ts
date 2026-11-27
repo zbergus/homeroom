@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RUNTIME_ENV } from "../config.js";
 import { leagueById } from "../leagues.js";
 import type { Game, GoalieStats, HockeyBoxscore, SkaterStats, Team, TeamBoxscore } from "../types.js";
 import { getJson, type Raw } from "./raw.js";
@@ -343,7 +344,7 @@ export async function fetchGameBoxscore(game: Game): Promise<HockeyBoxscore> {
   // NHL official API
   if (leagueId === "nhl" && game.nhl_id) {
     try {
-      const nhlBase = process.env.NHL_BASE ?? "https://api-web.nhle.com/v1";
+      const nhlBase = RUNTIME_ENV.NHL_BASE ?? "https://api-web.nhle.com/v1";
       const nhlData = await getJson(`${nhlBase}/gamecenter/${game.nhl_id}/boxscore`, 5000);
       const parsed = parseNhlApiBoxscore(nhlData, game);
       if (parsed && (parsed.away.skaters.length > 0 || parsed.away.goalies.length > 0)) {
@@ -357,7 +358,7 @@ export async function fetchGameBoxscore(game: Game): Promise<HockeyBoxscore> {
   // ESPN summary
   try {
     const league = leagueById(leagueId);
-    const espnBase = process.env.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports/hockey";
+    const espnBase = RUNTIME_ENV.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports/hockey";
     const data = await getJson(`${espnBase}/${league.espn}/summary?event=${eventId}`, 5000);
     const parsed = parseEspnPlayerBoxscore(data, game);
     if (parsed && (parsed.away.skaters.length > 0 || parsed.away.goalies.length > 0)) {

@@ -57,7 +57,10 @@ export class Poller {
     for (const g of this.engine.games.values()) {
       if (g.status !== "in" || !this.relevant(g)) continue;
       ids.add(`espn:${g.league}`);
-      if (g.league === "nhl") ids.add("nhl");
+      if (g.league === "nhl") {
+        ids.add("nhl");
+        ids.add("nhl:pbp");
+      }
       if (this.engine.isSynced(g.id)) ids.add("summary");
     }
     return ids;
@@ -73,6 +76,8 @@ export class Poller {
         ? `The ESPN ${id.slice(5).toUpperCase()} feed`
         : id === "nhl"
         ? "The NHL feed"
+        : id === "nhl:pbp"
+        ? "The NHL play-by-play feed"
         : id === "summary"
         ? "The game summary feed"
         : `The ${id} feed`,
@@ -169,14 +174,17 @@ export class Poller {
     const today = this.todayET();
     const needDefault = !this.lagging.has(leagueId) || now - (this.lastDefault.get(leagueId) ?? 0) > DEFAULT_REFRESH_MS;
     if (needDefault) {
+      const started = Date.now();
       const { games, day } = await this.health.track(`espn:${leagueId}`, () => this.fetchDay(leagueId));
       this.lastDefault.set(leagueId, now);
-      for (const g of games) this.engine.ingestEspn(g);
+      for (const g of games) this.engine.ingestEspn(g, started);
       if (day && day !== today) this.lagging.add(leagueId);
       else this.lagging.delete(leagueId);
     }
     if (this.lagging.has(leagueId)) {
-      for (const g of (await this.health.track(`espn:${leagueId}`, () => this.fetchDay(leagueId, today.replace(/-/g, "")))).games) this.engine.ingestEspn(g);
+      const started = Date.now();
+      const games = (await this.health.track(`espn:${leagueId}`, () => this.fetchDay(leagueId, today.replace(/-/g, "")))).games;
+      for (const g of games) this.engine.ingestEspn(g, started);
     }
   }
 
@@ -213,7 +221,9 @@ export class Poller {
       // Fetch it for synced live games every tick (it also names scorers), and for any game whose goals lag.
       if (n.state === "in" && (this.engine.isSynced(g.id) || n.goals.length < n.homeScore + n.awayScore)) {
         try {
-          const full = await this.health.track("nhl", () => fetchNhlGame(n.id), false);
+          // Track play-by-play under its own id: a silently broken scorer feed must not be
+          // hidden by the fast score/now poll succeeding on every tick.
+          const full = await this.health.track("nhl:pbp", () => fetchNhlGame(n.id));
           feed = { ...n, goals: full.goals.length >= n.goals.length ? withOfficialStrength(full.goals, n.goals) : n.goals, situation: full.situation };
         } catch (err) {
           // the play-by-play feed is the secondary source here: keep the score/now version (health already counted the failure)

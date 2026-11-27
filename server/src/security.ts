@@ -3,6 +3,11 @@ import type { IncomingHttpHeaders } from "node:http";
 
 const digest = (s: string) => createHash("sha256").update(s).digest();
 
+/** Redacts credential-bearing query values before an upstream error is shown in /api/status. */
+export function redactSecrets(text: string): string {
+  return text.replace(/([?&](?:token|key|api_key|apikey|secret|password)=)[^&\s"']+/gi, "$1[REDACTED]");
+}
+
 /** Constant-time string comparison (digests first, so length differences do not leak either). */
 export function safeEq(a: string | undefined, b: string | undefined): boolean {
   if (a === undefined || b === undefined) return false;
@@ -11,7 +16,7 @@ export function safeEq(a: string | undefined, b: string | undefined): boolean {
 
 /**
  * Is this request coming from a page on another site? Browsers attach `Sec-Fetch-Site` and `Origin` to
- * cross-origin requests and scripts cannot forge them; Stream Deck, Home Assistant, curl and pysher send neither.
+ * cross-origin requests and scripts cannot forge them; Stream Deck, Home Assistant and curl send neither.
  * `allowed` are extra `host[:port]` values (a dev server on another port).
  */
 export function isCrossSite(h: IncomingHttpHeaders, allowed: readonly string[] = []): boolean {

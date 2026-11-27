@@ -29,7 +29,7 @@ describe("ProviderHealth", () => {
     const [row] = h.snapshot();
     expect(row).toMatchObject({ id: "nhl", consecutive_failures: 2, last_error: "HTTP 503", last_success_at: 1_000_000, failing_since: 1_010_000 });
     h.success("nhl");
-    expect(h.snapshot()[0]).toMatchObject({ consecutive_failures: 0, failing_since: null, state: "ok" });
+    expect(h.snapshot()[0]).toMatchObject({ consecutive_failures: 0, failing_since: null, state: "ok", last_error: null, last_error_at: null });
   });
 
   it("warns only for live-relevant providers: failing > 60 s, or no data > 5 min", () => {
@@ -52,6 +52,14 @@ describe("ProviderHealth", () => {
     // silent staleness: nobody is failing, but nothing has succeeded for 6 minutes
     t = 90_000 + 6 * 60_000;
     expect(h.warnings(new Set(["nhl"])).join()).toMatch(/nhl has returned no data for 6 min/);
+  });
+
+  it("redacts upstream API keys from the error text shown in /api/status", () => {
+    const h = new ProviderHealth();
+    h.failure("ahl", new Error("500 https://lscluster.hockeytech.com/feed/index.php?feed=modulekit&key=SUPERSECRET&fmt=json"));
+    const row = h.snapshot()[0];
+    expect(row.last_error).toContain("key=[REDACTED]");
+    expect(row.last_error).not.toContain("SUPERSECRET");
   });
 
   it("track() records failures but can skip counting a secondary call's success", async () => {

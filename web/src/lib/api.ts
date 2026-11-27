@@ -19,7 +19,7 @@ async function req<T>(method: string, path: string, body?: unknown | undefined, 
   if (!r.ok) {
     let msg = r.statusText;
     try { const j = await r.json(); msg = j.error ?? j.message ?? msg; } catch { /* ignore */ }
-    if (r.status === 401) msg = getAdminToken() ? "Unauthorized: the admin token was not accepted. Check the “Admin token” field at the top of the page." : "Unauthorized: this server requires an admin token. Enter it in the “Admin token” field at the top of the page.";
+    if (r.status === 401) msg = getAdminToken() ? "Unauthorized: the admin token was not accepted. Check Settings → Security → Admin token." : "Unauthorized: this server requires an admin token. Enter it in Settings → Security → Admin token.";
     throw new ApiError(r.status, msg || `HTTP ${r.status}`);
   }
   const text = await r.text();

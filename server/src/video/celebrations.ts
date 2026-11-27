@@ -31,12 +31,15 @@ export function resolveCelebrationUrl(rawUrl: string): string {
 
 /** Check if host is a local/private IP or loopback to prevent SSRF. */
 export function isPrivateHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0") return true;
+  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h.startsWith("127.") || h === "::1" || h === "0:0:0:0:0:0:0:1" || h === "0.0.0.0") return true;
   if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
   if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
   if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(h)) return true; // carrier-grade NAT
+  if (/^f[cd][0-9a-f]/.test(h) || /^fe[89ab]/.test(h)) return true; // IPv6 ULA / link-local
+  if (h.startsWith("::ffff:")) return isPrivateHost(h.slice(7));
   return false;
 }
 
@@ -202,6 +205,8 @@ export const celebrationRoutes: FastifyPluginAsync<{
     try {
       const res = await fetch(resolvedUrl, {
         headers: { "User-Agent": "Homeroom/1.0 (celebration-import)" },
+        // The initial URL was checked, but a redirect could point at a private service.
+        redirect: "error",
         signal: AbortSignal.timeout(15000),
       });
       if (!res.ok) {
