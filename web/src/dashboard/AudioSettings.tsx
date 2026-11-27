@@ -312,7 +312,9 @@ export default function AudioSettings({ leagues, settings, saveNow, audio }: Pro
             </span>
             {horns.length === 0 ? (
               <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-400">
-                No horns uploaded yet. Upload a team horn or a league default (e.g. NHL default) to hear sirens on goal.
+                No horns uploaded yet. Upload a team horn here, or from a repo checkout run
+                <code className="mx-1 text-xs">node scripts/fetch-horns.mjs</code>
+                to import the NHL defaults. The first goal is silent until a horn is installed.
               </p>
             ) : (
               <ul className="flex flex-col gap-2">

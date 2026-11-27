@@ -34,6 +34,8 @@ open http://localhost:8080
 ```
 Persistent data is stored in `./data` (SQLite database) and `./media` (goal horns and celebration clips).
 
+Two first-run steps are easy to miss: the **stream delay defaults to 0 s** (set it in the Games tab once you know how far your TV feed trails the data feed, or use the camera calibration), and **no horns ship with the image** — upload one in Settings → Goal horns, or from a repo checkout run `node scripts/fetch-horns.mjs --dry-run` and then the same command without `--dry-run` to import the NHL defaults.
+
 **Home server deployment (Arcane / Docker Compose):** Paste [`deploy/docker-compose.yml`](deploy/docker-compose.yml) into your server deployment manager. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Home Assistant Integration

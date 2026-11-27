@@ -17,7 +17,7 @@ Poller & Parser ──► Game State Engine ──► Stream-Sync Delay Buffer (
             ┌───────────────────────────────────────┴──────────────────────────────────────┐
             ▼                                                                              ▼
  Home Assistant Direct REST                                                        UI WebSocket Hub
- (/api/services/*, /api/events/homeroom_*)                                               (/ws, /ws/live)
+ (/api/services/*, /api/events/homeroom_*)                                               (/ws)
             │                                                                              │
             ▼                                                                              ▼
  HA Automations, Lights, Horns & TTS                                             Kiosk TV Companion Views

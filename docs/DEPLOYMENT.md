@@ -38,26 +38,29 @@ unprivileged. `data` holds the SQLite database and settings; `media` holds the g
 
 ### 3. Environment
 
-Copy `deploy/.env.example`, fill it in and paste it into the Arcane project. Two values are required and the compose file
-refuses to start without them:
+Copy `deploy/.env.example`, fill it in and paste it into the Arcane project. Only one value is required; the Arcane compose
+refuses to start without it:
 
 | Variable | What |
 |---|---|
-| `PUBLIC_BASE_URL` | The LAN address speakers, Home Assistant and the TVs use to reach this service, e.g. `http://192.168.1.10:8080` |
-| `PUSHER_APP_SECRET` | A long random value (`openssl rand -hex 32`) |
+| `PUBLIC_BASE_URL` | The LAN address speakers, Home Assistant and the TVs use to reach this service, e.g. `http://192.168.1.10:8080`. No trailing slash. It is also seeded as a dashboard setting — a value saved there overrides a later `.env` change. |
 
-Set these two as well; both are optional, and the dashboard warns while they are empty:
+Strongly recommended, and optional:
 
 | Variable | What |
 |---|---|
-| `ADMIN_TOKEN` | Guards every mutating API call and `GET /api/hook/*`. Enter it in the dashboard's "Admin token" field. |
-| `HOMEROOM_API_KEY` | Only this key may link a Home Assistant install. Use the same value in the integration. |
+| `ADMIN_TOKEN` | Guards every mutating API call, `GET /api/hook/*` and the WebSocket upgrade. Generate one (`openssl rand -hex 32`) and enter the same value in the dashboard's **Settings → Security → Admin token** field. |
+| `HOMEROOM_PUBLISH_ADDR` | Bind to one interface instead of all interfaces. |
+| `HOMEROOM_ALLOWED_ORIGINS`, `LOG_LEVEL`, `TZ`, `HOMEROOM_DATA_DIR`, `HOMEROOM_MEDIA_DIR`, `HOMEROOM_TAG` | See the comments in `deploy/.env.example`. |
 
-`PUSHER_APP_KEY` must match the patched Home Assistant integration (`ha/patch_integration.py --key ...`, see
-[`HOME_ASSISTANT.md`](HOME_ASSISTANT.md)).
+Home Assistant uses **direct REST** (`/api/services/*`, `/api/events/homeroom_*`). There is no Pusher bridge, no patched HA
+integration and no linking API key. In the dashboard enter HA's URL and a long-lived token under **Settings → Home
+Assistant**; changing the URL clears the stored token. Leave **Fire REST events** off until your HA automations are ready
+for goal notifications.
 
-Homeroom is for your LAN. The compose file publishes it on all interfaces by default; set `HOMEROOM_PUBLISH_ADDR` to the NAS
-LAN address to bind just that one. Do not expose it to the internet.
+Homeroom is for your LAN. The compose file publishes on all interfaces by default; set `HOMEROOM_PUBLISH_ADDR` to the NAS
+LAN address to bind just that one. If you put it behind Caddy, forward the WebSocket upgrade on `/ws` as well — otherwise
+every TV view stays stuck at "connecting" with only a small dot. Do not expose it to the internet.
 
 ## Deploy and update
 
@@ -82,7 +85,13 @@ git tag v1.0.0 && git push origin v1.0.0     # publishes 1.0.0 and 1.0
 - The container shows healthy (the image has a built-in healthcheck on `/healthz`).
 - `http://<NAS>:8080/` shows the dashboard and **Status & diagnostics** lists no unexpected warnings.
 - `curl http://<NAS>:8080/healthz` returns `{"ok":true,...}`.
-- Link Home Assistant and fire a test goal from the dashboard.
+- Through the reverse proxy, the kiosk connection dot is green (WS forwarding works).
+- Add the HA URL and long-lived token, leave **Fire REST events** off, then **Test connection** and **Sync devices**.
+- Star 1–2 teams so games are watched automatically.
+- Install at least `nhl/default.mp3` (upload in **Settings → Goal horns**, or from a repo checkout run
+  `node scripts/fetch-horns.mjs --dry-run` then the command without `--dry-run`).
+- Set the stream delay in the Games tab (or use camera calibration) before firing a test goal. Manual test buttons bypass
+  the automation gates, so keep **Fire REST events** off until you intend to notify people.
 
 ## Backups
 

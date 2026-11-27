@@ -54,10 +54,11 @@ Homeroom integrates directly with Home Assistant using standard REST APIs with a
 - `outputs/lights.ts`: applies light actions directly via `/api/services/light/*`, querying state beforehand to restore brightness, color, and effects when the action completes.
 
 ## HTTP surface (`http.ts`)
-Control plane: `/api/{leagues,schedule,sync,settings,triggers,trigger,hook/:trigger,test/goal,status,events/recent,games/live,games/raw,calibrate,teams/…,entities,actions,horns…,ha/test,ha/sync}`, `/healthz`, `/media/horns/<league>/<ABBR>.mp3`, WS `/ws`, WS `/ws/live`, static web build with SPA fallback. `ADMIN_TOKEN` (optional) is required on mutating routes and on `GET /api/hook/*`. `GET /api/settings` redacts the HA token.
+Control plane: `/api/{leagues,schedule,sync,settings,triggers,trigger,hook/:trigger,test/goal,status,events/recent,games/live,games/raw,calibrate,teams/…,entities,actions,horns…,ha/test,ha/sync}`, `/healthz`, `/media/horns/<league>/<ABBR>.mp3`, WS `/ws`, static web build with SPA fallback. `ADMIN_TOKEN` (optional) is required on mutating routes and on `GET /api/hook/*`. `GET /api/settings` redacts the HA token.
 
 ## Web (`web/src`)
 `views/` Dashboard, Scoreboard, Grid, Ticker (+`App.tsx` routes). `dashboard/` control panels. `kiosk/` goal overlay, toast, break screens. `components/` shared TV pieces (`GameBars`, `StatBars`, `SidePanel`, `Kiosk`). `lib/`: `live.ts` (single WS client, renders exactly what the server sends, already delayed), `clock.ts` (interpolated game clock), `colors.ts` (matchup colour resolver: contrast + clash avoidance), `format.ts`, `mock.ts` (`?mock=1` fake data for every view and state), `api.ts`, `hooks.ts`. Scoreboard debug: `&screen=live|countdown|players|form|stats|summary`.
 
 ## Persistence
-SQLite (`node:sqlite`, `DATA_DIR/homeroom.db`): settings JSON, synced games, favourites, integration links, synced devices, light actions, team colour overrides, emitted-event keys. Horns are plain files in `MEDIA_DIR/horns/<league>/<ABBR>.mp3` (`default.mp3` per league as fallback). The delay queue and event log are memory-only (a restart drops pending events).
+SQLite (`node:sqlite`, `DATA_DIR/homeroom.db`): settings JSON, synced games, favourites, integration links, synced devices, light actions, team colour overrides, emitted-event keys. Horns are plain files in `MEDIA_DIR/horns/<league>/<ABBR>.mp3` (`default.mp3` per league as fallback). Queued events are persisted in the `pending_events` table and restored after a restart (items overdue by more than
+`HOMEROOM_RESTORE_GRACE_S` are dropped, never replayed late). The in-memory event log is not persisted.

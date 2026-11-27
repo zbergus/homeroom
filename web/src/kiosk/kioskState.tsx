@@ -62,7 +62,12 @@ export function IdleScreen({ next, now, loading }: { next: GameLite | null | und
           <div className="opacity-70" style={{ fontSize: U(2.4) }}>{new Date(startMs(next)).toLocaleDateString([], { weekday: "long" })} {timeLabel(startMs(next))}</div>
         </>
       ) : (
-        !loading && <div className="opacity-70" style={{ fontSize: U(4) }}>No upcoming games for your teams</div>
+        !loading && (
+          <>
+            <div className="opacity-70" style={{ fontSize: U(4) }}>No upcoming games for your teams</div>
+            <div className="opacity-50" style={{ fontSize: U(2) }}>Star a team in Settings → My Teams, or open /?game=&lt;id&gt; to pin a game.</div>
+          </>
+        )
       )}
     </div>
   );

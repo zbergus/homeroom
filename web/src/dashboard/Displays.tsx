@@ -124,22 +124,15 @@ export default function Displays({ base }: { base: string }) {
     if (screen.id === "scoreboard") {
       parts.push("game=auto");
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
-      if (onlyMine) parts.push("only=mine");
       if (sbMode === "hero_only") parts.push("hero_only=1");
       if (sbMode === "no_rotate") parts.push("break_rotate=0");
     } else if (screen.id === "matchup") {
       parts.push("game=auto");
       if (matchupSide !== "both") parts.push(`side=${matchupSide}`);
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
-      if (onlyMine) parts.push("only=mine");
-    } else if (screen.id === "plate") {
+    } else if (screen.id === "plate" || screen.id === "tracker") {
       parts.push("game=auto");
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
-      if (onlyMine) parts.push("only=mine");
-    } else if (screen.id === "tracker") {
-      parts.push("game=auto");
-      if (leagueFilter) parts.push(`league=${leagueFilter}`);
-      if (onlyMine) parts.push("only=mine");
     } else if (screen.id === "grid" || screen.id === "ticker") {
       if (leagueFilter) parts.push(`league=${leagueFilter}`);
       if (onlyMine) parts.push("only=mine");
@@ -206,7 +199,7 @@ export default function Displays({ base }: { base: string }) {
           </Field>
 
           <div className="flex items-center gap-3 self-end pb-2">
-            <Switch checked={onlyMine} onChange={setOnlyMine} label="Only My Teams" />
+            <Switch checked={onlyMine} onChange={setOnlyMine} label="Only My Teams (Grid / Ticker / presets)" />
             <div>
               <div className="text-sm font-medium">Followed Teams Only</div>
               <div className="text-xs text-slate-400">Restricts screens to your starred teams.</div>
