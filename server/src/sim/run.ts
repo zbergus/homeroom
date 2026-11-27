@@ -101,7 +101,9 @@ if (!a["server-only"]) {
   });
   if (err) throw new Error(err);
   store.setSyncedGames(games.map((g) => g.id));
-  const webDir = process.env.WEB_DIR ?? path.resolve(here, "../../../web/dist");
+  // Dynamic import: RUNTIME_ENV snapshots the environment at module load, which must happen after the overrides above.
+  const { RUNTIME_ENV } = await import("../config.js");
+  const webDir = RUNTIME_ENV.WEB_DIR ?? path.resolve(here, "../../../web/dist");
   const appPort = simPort + 1;
   const app = await createApp({ store, webDir, port: appPort, startPoller: true });
   closeApp = () => app.close();

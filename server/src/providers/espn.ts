@@ -1,3 +1,4 @@
+import { RUNTIME_ENV } from "../config.js";
 import { isShootout, leagueById, periodLabel, type LeagueDef } from "../leagues.js";
 import type { Game, GameStatus, LeaderRef, Rgb, ScoringPlay, StartingGoalie, StatRow, Team } from "../types.js";
 import { fetchAhlGameSummary, fetchAhlScoreboard } from "./ahl.js";
@@ -5,8 +6,8 @@ import { buildStatRows } from "./boxscore.js";
 import { digits, finite, getJson, namespacedId, optStr, type Raw, str } from "./raw.js";
 import { normStrength } from "./strength.js";
 
-const BASE = process.env.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
-const WEB_BASE = process.env.ESPN_WEB_BASE ?? "https://site.web.api.espn.com/apis/common/v3/sports";
+const BASE = RUNTIME_ENV.ESPN_BASE ?? "https://site.api.espn.com/apis/site/v2/sports";
+const WEB_BASE = RUNTIME_ENV.ESPN_WEB_BASE ?? "https://site.web.api.espn.com/apis/common/v3/sports";
 
 function hexToRgb(hex: string | undefined, fallback: Rgb): Rgb {
   if (!hex || !/^[0-9a-f]{6}$/i.test(hex)) return fallback;

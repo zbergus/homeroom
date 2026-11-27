@@ -1,8 +1,9 @@
+import { RUNTIME_ENV } from "../config.js";
 import type { ScoringPlay } from "../types.js";
 import { digits, getJson as fetchJson, namespacedId, optStr, type Raw, str } from "./raw.js";
 import { normStrength, parseSituation, strengthFromSituation } from "./strength.js";
 
-const BASE = process.env.NHL_BASE ?? "https://api-web.nhle.com/v1";
+const BASE = RUNTIME_ENV.NHL_BASE ?? "https://api-web.nhle.com/v1";
 
 export interface NhlGame {
   id: number;

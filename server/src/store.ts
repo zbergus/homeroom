@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import { RUNTIME_ENV } from "./config.js";
 import { LEAGUES } from "./leagues.js";
 import { firstIssue, SettingsPatchSchema } from "./schemas.js";
 import type { LightAction, Settings } from "./types.js";
@@ -9,8 +10,8 @@ import type { LightAction, Settings } from "./types.js";
 // vite (vitest) does not know `node:sqlite` is a builtin yet, so load it at runtime
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 
-export const DATA_DIR = process.env.DATA_DIR ?? path.resolve("data");
-export const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve("media");
+export const DATA_DIR = RUNTIME_ENV.DATA_DIR ?? path.resolve("data");
+export const MEDIA_DIR = RUNTIME_ENV.MEDIA_DIR ?? path.resolve("media");
 
 const DEFAULT_SETTINGS: Settings = {
   delay_global_s: 0,
@@ -20,7 +21,7 @@ const DEFAULT_SETTINGS: Settings = {
   nhl_fast_poll_ms: 1000,
   enabled_leagues: LEAGUES.filter((l) => !l.optIn).map((l) => l.id),
   grid_leagues: ["nhl", "iihf", "ahl"],
-  public_base_url: process.env.PUBLIC_BASE_URL ?? "",
+  public_base_url: RUNTIME_ENV.PUBLIC_BASE_URL ?? "",
   horn_scope: "favorites",
   horn_max_s: 30,
   horn_fade_ms: 1500,

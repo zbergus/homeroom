@@ -1,10 +1,11 @@
+import { RUNTIME_ENV } from "../config.js";
 import { periodLabel, type LeagueDef } from "../leagues.js";
 import type { Game, GameStatus, Rgb, ScoringPlay, StatRow, Team } from "../types.js";
 import { getJson, type Raw } from "./raw.js";
 
-const AHL_KEY = process.env.AHL_KEY ?? "ccb91f29d6744675";
-const AHL_CLIENT = process.env.AHL_CLIENT ?? "ahl";
-const AHL_BASE = process.env.AHL_BASE ?? "https://lscluster.hockeytech.com/feed/index.php";
+const AHL_KEY = RUNTIME_ENV.AHL_KEY;
+const AHL_CLIENT = RUNTIME_ENV.AHL_CLIENT;
+const AHL_BASE = RUNTIME_ENV.AHL_BASE;
 
 const GREY: Rgb = { r: 90, g: 98, b: 110 };
 const WHITE: Rgb = { r: 255, g: 255, b: 255 };
