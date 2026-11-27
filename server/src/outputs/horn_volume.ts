@@ -52,7 +52,7 @@ export class HornVolume {
 
   /**
    * Resolves when the players are at the horn volume, or after the budget, whichever is first; never rejects.
-   * Idempotent per event id (the Pusher and REST paths both call it for the same goal).
+   * Idempotent per event id (a goal can be retried or replayed from the event log).
    */
   prepare(eventId: string): Promise<void> {
     if (!this.enabled()) return Promise.resolve();

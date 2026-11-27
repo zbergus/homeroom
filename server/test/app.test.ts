@@ -85,6 +85,9 @@ describe("control plane", () => {
   it("validates triggers and actions", async () => {
     expect((await json("/api/trigger", "POST", { trigger: "bogus" })).status).toBe(400);
     expect((await json("/api/trigger", "POST", { trigger: "goal", league: "xx" })).status).toBe(400);
+    // Malformed types must be rejected, not coerced into {} and turned into a real manual goal.
+    expect((await json("/api/trigger", "POST", { trigger: 123 })).status).toBe(400);
+    expect((await json("/api/test/goal", "POST", { league: [] })).status).toBe(400);
     expect((await json("/api/actions", "PUT", [{ id: "a", enabled: true, triggers: ["nope"], team_scope: "any", entities: [], effect: "flash" }])).status).toBe(400);
     const legacy = await json("/api/actions", "PUT", [{ id: "a", enabled: true, on: ["goal"], team_scope: "any", entities: [], effect: "flash", duration: 3, speed: 5, colors: "team", restore: true }]);
     expect(((await legacy.json()) as { triggers: string[] }[])[0]?.triggers).toEqual(["any_score"]);

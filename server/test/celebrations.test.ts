@@ -155,6 +155,12 @@ describe("local celebration library", () => {
 
     expect(isPrivateHost("localhost")).toBe(true);
     expect(isPrivateHost("127.0.0.1")).toBe(true);
+    expect(isPrivateHost("127.0.0.2")).toBe(true);
+    expect(isPrivateHost("127.1")).toBe(true);
+    expect(isPrivateHost("[::1]")).toBe(true);
+    expect(isPrivateHost("fd00::1")).toBe(true);
+    expect(isPrivateHost("fe80::1")).toBe(true);
+    expect(isPrivateHost("100.64.0.1")).toBe(true);
     expect(isPrivateHost("192.168.1.50")).toBe(true);
     expect(isPrivateHost("10.0.0.1")).toBe(true);
     expect(isPrivateHost("172.20.0.1")).toBe(true);
@@ -175,8 +181,12 @@ describe("local celebration library", () => {
     // Mock global fetch to return mp4
     const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async (input: RequestInfo | URL) => {
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         const u = String(input);
+        if (u.includes("redirect")) {
+          expect(init?.redirect).toBe("error");
+          return new Response(null, { status: 302, headers: { location: "http://127.0.0.1/secret.mp4" } });
+        }
         if (u.includes("not-mp4")) {
           return new Response("not a video", { status: 200, headers: { "content-type": "video/mp4" } });
         }
@@ -186,6 +196,8 @@ describe("local celebration library", () => {
         return new Response(mp4, { status: 200, headers: { "content-type": "video/mp4" } });
       }) as typeof fetch;
 
+      // A redirect pointing at a private host is refused, not followed.
+      expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "https://example.com/redirect.mp4" } })).statusCode).toBe(400);
       // 404 from upstream
       expect((await app.inject({ method: "POST", url: importUrl, payload: { url: "https://example.com/not-found.mp4" } })).statusCode).toBe(400);
       // Not MP4 content
