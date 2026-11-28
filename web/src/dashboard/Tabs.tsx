@@ -5,7 +5,8 @@ interface TabDef<K extends string> {
   label: string;
 }
 
-const STORE = "homeroom.dash_tab";
+// v2: the landing tab is now "home"; drop the old remembered tab so everyone lands there once.
+const STORE = "homeroom.dash_tab_v2";
 export const loadTab = <K extends string>(keys: K[], fallback: K): K => {
   try {
     const v = localStorage.getItem(STORE);

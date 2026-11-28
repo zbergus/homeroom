@@ -335,6 +335,8 @@ export interface EventRecord {
 
 export interface Status {
   version: string;
+  /** true when the server requires ADMIN_TOKEN for writes; the UI hides edit controls until a token is entered */
+  admin_required?: boolean | undefined;
   uptime_s: number;
   games: { tracked: number; live: number; synced: number };
   integration: { links: { id: string; events_connected: boolean; devices_connected: boolean }[]; devices: number };

@@ -3,7 +3,7 @@ import { Button, Card, Field, inputCls, Switch } from "../components/ui";
 import { isMockUrl } from "../lib/live";
 import { copyText } from "../lib/clipboard";
 
-interface ScreenDef {
+export interface ScreenDef {
   id: "scoreboard" | "matchup" | "plate" | "tracker" | "grid" | "ticker" | "screen";
   basePath: string;
   name: string;
@@ -14,7 +14,7 @@ interface ScreenDef {
   category: "primary" | "companion" | "preset";
 }
 
-const SCREENS: ScreenDef[] = [
+export const SCREENS: ScreenDef[] = [
   {
     id: "scoreboard",
     basePath: "/scoreboard?game=auto",
@@ -96,6 +96,14 @@ const SCREENS: ScreenDef[] = [
     category: "preset",
   },
 ];
+
+/** Default launch link for a screen, used by the home page's quick launcher. */
+export function screenHref(screen: ScreenDef, base: string): string {
+  const origin = (base || location.origin).replace(/\/$/, "");
+  const path = screen.basePath.startsWith("/") ? screen.basePath : `/${screen.basePath}`;
+  const join = path.includes("?") ? "&" : "?";
+  return `${origin}${path}${isMockUrl() ? `${join}mock=1` : ""}`;
+}
 
 const CATEGORIES: { key: ScreenDef["category"]; title: string; subtitle: string }[] = [
   { key: "primary", title: "Primary TV Views", subtitle: "Full-screen displays designed for main living room and sports bar TVs" },

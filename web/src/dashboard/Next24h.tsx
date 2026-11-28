@@ -29,7 +29,7 @@ export default function Next24h({ schedule, settings, sync }: { schedule: Poll<{
     <Card title="Next 24 hours" subtitle="Watched games that are live or about to start.">
       {schedule.err && !schedule.data && <Notice kind="err">Could not load schedule: {schedule.err}</Notice>}
       {!schedule.data && !schedule.err && <p className="text-sm text-slate-400">Loading...</p>}
-      {schedule.data && rows.length === 0 && <p className="py-3 text-sm text-slate-400">Nothing live or starting in the next 24 hours. Sync a game below, or star a team to watch its games automatically.</p>}
+      {schedule.data && rows.length === 0 && <p className="py-3 text-sm text-slate-400">Nothing live or starting in the next 24 hours. Follow a team or sync a game to watch it automatically.</p>}
       <ul className="grid gap-2 md:grid-cols-2">
         {rows.map((g) => {
           const v = settings ? syncView(g, settings, sync) : null;

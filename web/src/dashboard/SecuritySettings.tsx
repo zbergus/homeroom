@@ -1,15 +1,21 @@
 import { useState } from "react";
-import { getAdminToken, setAdminToken } from "../lib/api";
+import { getAdminToken, setAdminToken, verifyAdminToken } from "../lib/api";
 import { Button, Card, Field, inputCls, Notice } from "../components/ui";
 
 export default function SecuritySettings({ onTokenChanged }: { onTokenChanged?: (t: string) => void }) {
   const [token, setToken] = useState(() => getAdminToken());
   const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState("");
 
-  const save = (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAdminToken(token.trim());
-    onTokenChanged?.(token.trim());
+    const candidate = token.trim();
+    setErr("");
+    if (!(await verifyAdminToken(candidate))) {
+      setErr("That token was not accepted by this server. Check the value and try again.");
+      return;
+    }
+    onTokenChanged?.(candidate);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -18,6 +24,7 @@ export default function SecuritySettings({ onTokenChanged }: { onTokenChanged?: 
     setToken("");
     setAdminToken("");
     onTokenChanged?.("");
+    setErr("");
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -29,7 +36,7 @@ export default function SecuritySettings({ onTokenChanged }: { onTokenChanged?: 
       title="Security & Access"
       subtitle="Only needed if the Homeroom server was started with an ADMIN_TOKEN environment variable."
     >
-      <form onSubmit={save} className="flex flex-col gap-4">
+      <form onSubmit={(e) => void save(e)} className="flex flex-col gap-4">
         <Field
           label="Admin Token"
           htmlFor="admin-token-input"
@@ -55,6 +62,7 @@ export default function SecuritySettings({ onTokenChanged }: { onTokenChanged?: 
             )}
           </div>
         </Field>
+        {err && <Notice kind="err">{err}</Notice>}
         {saved && <Notice kind="ok">Token preferences updated for this browser.</Notice>}
       </form>
     </Card>

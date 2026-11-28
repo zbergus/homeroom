@@ -93,6 +93,23 @@ export const api = {
   },
 };
 
+/**
+ * Check a candidate admin token with a harmless no-op settings write. The working token is left in
+ * storage on success and restored on failure, so a typo never silently unlocks the UI.
+ */
+export async function verifyAdminToken(token: string): Promise<boolean> {
+  if (isMockUrl()) return true;
+  const prev = getAdminToken();
+  setAdminToken(token);
+  try {
+    await api.putSettings({});
+    return true;
+  } catch {
+    setAdminToken(prev);
+    return false;
+  }
+}
+
 export const hornUrl = (h: Horn) => h.url || `/media/horns/${h.league}/${h.abbr}.mp3`;
 const celebrationPath = (league: string, abbr: string, playerId: string) =>
   `/api/celebrations/${[league, abbr, playerId].map(encodeURIComponent).join("/")}`;

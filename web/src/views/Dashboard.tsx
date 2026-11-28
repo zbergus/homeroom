@@ -4,6 +4,7 @@ import { api, getAdminToken } from "../lib/api";
 import { isMockUrl, useLive } from "../lib/live";
 import { useDebouncedCallback } from "../lib/hooks";
 import { Button, Card, Notice } from "../components/ui";
+import { isAdminLocked } from "../dashboard/adminGate";
 import AudioSettings from "../dashboard/AudioSettings";
 import Automation from "../dashboard/Automation";
 import Calendar from "../dashboard/Calendar";
@@ -12,6 +13,7 @@ import DelayPanel from "../dashboard/DelayPanel";
 import DevicesActions from "../dashboard/DevicesActions";
 import Displays from "../dashboard/Displays";
 import HASettings from "../dashboard/HASettings";
+import Home from "../dashboard/Home";
 import ManualTriggers from "../dashboard/ManualTriggers";
 import Next24h from "../dashboard/Next24h";
 import QuickSetup from "../dashboard/QuickSetup";
@@ -44,6 +46,7 @@ const normalise = (s: Settings): Settings => ({
 });
 
 const TABS = [
+  { key: "home", label: "Home" },
   { key: "games", label: "Games" },
   { key: "celebrations", label: "Celebrations" },
   { key: "displays", label: "Displays" },
@@ -56,7 +59,7 @@ const HEALTH_TEXT = { ok: "Healthy", warn: "Warnings", err: "Problems", unknown:
 
 export default function Dashboard() {
   const { conn, games: liveGames } = useLive("control");
-  const [tab, setTabState] = useState<TabKey>(() => loadTab(TAB_KEYS, "games"));
+  const [tab, setTabState] = useState<TabKey>(() => loadTab(TAB_KEYS, "home"));
   const [settings, setSettings] = useState<Settings | null>(null);
   const [sync, setSync] = useState<SyncState>({ games: [], favorites: [] });
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -76,6 +79,13 @@ export default function Dashboard() {
   const status = usePoll(api.status, tab === "settings" || sim.active ? 5000 : 20_000);
   const health = healthOf(status);
 
+  // A server with ADMIN_TOKEN rejects every write until this browser sends a matching Bearer token.
+  // Until then the dashboard is a viewer: teams, schedule and displays, nothing that can be changed.
+  const hasToken = token.trim() !== "";
+  const locked = isAdminLocked(status.data?.admin_required, token);
+  const activeTab: TabKey = locked ? "home" : tab;
+  const visibleTabs = locked ? TABS.filter((t) => t.key === "home") : TABS;
+
   useEffect(() => {
     const active = status.data?.simulation?.active;
     if (typeof active === "boolean") {
@@ -89,7 +99,13 @@ export default function Dashboard() {
     window.scrollTo({ top: 0 });
   }, []);
 
+  const focusToken = () => setTimeout(() => document.getElementById("admin-token-input")?.focus(), 100);
   const gotoStatus = () => {
+    if (locked) {
+      setTab("home");
+      focusToken();
+      return;
+    }
     setTab("settings");
     setForceExpandStatus(true);
     setTimeout(() => document.getElementById("status")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -164,10 +180,14 @@ export default function Dashboard() {
     () => (settings?.enabled_leagues ?? leagueIds).filter((l) => leagueIds.length === 0 || leagueIds.includes(l)),
     [settings?.enabled_leagues, leagueIds]
   );
-  const hasToken = token.trim() !== "";
+
+  const onUnlock = useCallback((t: string) => {
+    setToken(t);
+    setTab("home");
+  }, [setTab]);
 
   const panel = (k: TabKey, children: React.ReactNode) => (
-    <div role="tabpanel" id={`panel-${k}`} aria-labelledby={`tab-${k}`} hidden={tab !== k} className={tab === k ? "flex flex-col gap-5" : "hidden"}>
+    <div role="tabpanel" id={`panel-${k}`} aria-labelledby={`tab-${k}`} hidden={activeTab !== k} className={activeTab === k ? "flex flex-col gap-5" : "hidden"}>
       {children}
     </div>
   );
@@ -192,7 +212,7 @@ export default function Dashboard() {
               type="button"
               onClick={gotoStatus}
               aria-label={`System health: ${HEALTH_TEXT[health]}. Open status and diagnostics`}
-              title={`${HEALTH_TEXT[health]}. Open status and diagnostics`}
+              title={locked ? `${HEALTH_TEXT[health]}. Unlock controls for diagnostics` : `${HEALTH_TEXT[health]}. Open status and diagnostics`}
               className="flex min-h-[34px] items-center gap-1.5 rounded-lg px-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-soft"
             >
               <span className={`h-2.5 w-2.5 rounded-full ${HEALTH_CLS[health]}`} />
@@ -205,129 +225,156 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => {
-                setTab("settings");
-                setTimeout(() => document.getElementById("admin-token-input")?.focus(), 100);
+                if (locked) {
+                  setTab("home");
+                  focusToken();
+                } else {
+                  setTab("settings");
+                  focusToken();
+                }
               }}
               className={`flex min-h-[34px] items-center gap-1 rounded-lg px-2 text-xs font-semibold transition ${
-                hasToken ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/25" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                locked
+                  ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+                  : hasToken
+                    ? "bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+                    : "text-slate-400 hover:bg-white/5 hover:text-white"
               }`}
-              title={hasToken ? "Admin token configured (click to manage in Settings)" : "Configure Admin token in Settings"}
+              title={locked ? "Enter the server admin token to reveal controls" : hasToken ? "Admin token configured (click to manage in Settings)" : "Configure Admin token in Settings"}
             >
-              <span>🔑</span>
-              <span className="hidden sm:inline">{hasToken ? "Admin set" : "Admin"}</span>
+              <span>{locked ? "🔒" : "🔑"}</span>
+              <span className="hidden sm:inline">{locked ? "Unlock" : hasToken ? "Admin set" : "Admin"}</span>
             </button>
           </div>
         </div>
-        <Tabs tabs={[...TABS]} value={tab} onChange={setTab} />
+        <Tabs tabs={[...visibleTabs]} value={activeTab} onChange={setTab} />
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6">
         {err && <Notice kind="err">{err}</Notice>}
         {saveErr && <Notice kind="err">{saveErr}</Notice>}
 
-        {/* Tab 1: Games (Live Scores, Stream Delay, Slate & Onboarding) */}
-        {panel("games", (
-          <>
-            <QuickSetup settings={settings} sync={sync} onNavigate={setTab} />
-            {settings && (
-              <DelayPanel
-                settings={settings}
-                update={update}
-                games={scheduled}
-                sync={sync}
-                leagues={enabledLeagueIds}
-                live={liveGames}
-                active={tab === "games"}
-              />
-            )}
-            <Next24h schedule={schedule} settings={settings} sync={sync} />
-            <Calendar schedule={schedule} settings={settings} sync={sync} setSync={setSync} saveNow={saveNow} />
-          </>
+        {/* Landing: followed teams, what's next, and one-click displays. Always available. */}
+        {panel("home", (
+          <Home
+            settings={settings}
+            sync={sync}
+            schedule={schedule}
+            base={settings?.public_base_url ?? ""}
+            locked={locked}
+            onNavigate={setTab}
+            onUnlock={onUnlock}
+          />
         ))}
 
-        {/* Tab 2: Celebrations (Lights, Goal Horns, Audio, Master Controls) */}
-        {panel("celebrations", settings ? (
+        {/* Everything below changes state, so it only exists once the admin gate is open. */}
+        {!locked && (
           <>
-            <Automation settings={settings} saveNow={saveNow} />
-            <DevicesActions triggers={triggers} />
-            <AudioSettings
-              leagues={leagueIds.length ? leagueIds : enabledLeagueIds}
-              settings={settings}
-              saveNow={saveNow}
-              audio={status.data?.audio}
-            />
+            {/* Games: Live Scores, Stream Delay, Slate & Onboarding */}
+            {panel("games", (
+              <>
+                <QuickSetup settings={settings} sync={sync} onNavigate={setTab} />
+                {settings && (
+                  <DelayPanel
+                    settings={settings}
+                    update={update}
+                    games={scheduled}
+                    sync={sync}
+                    leagues={enabledLeagueIds}
+                    live={liveGames}
+                    active={activeTab === "games"}
+                  />
+                )}
+                <Next24h schedule={schedule} settings={settings} sync={sync} />
+                <Calendar schedule={schedule} settings={settings} sync={sync} setSync={setSync} saveNow={saveNow} />
+              </>
+            ))}
 
-            {/* Expandable Celebration Videos */}
-            <Card
-              title="Celebration Videos"
-              subtitle="Full-screen video overlays on TV scoreboards when a team or player scores."
-              actions={
-                <Button onClick={() => setShowVideos(!showVideos)} className="text-xs">
-                  {showVideos ? "Collapse Videos" : "Configure Videos"}
-                </Button>
-              }
-            >
-              {showVideos ? (
-                <CelebrationManager leagues={leagueIds.length ? leagueIds : enabledLeagueIds} games={liveGames} />
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-                  <span>Optional: Upload MP4/WebM goal clips per team or player to take over the screen on goal.</span>
-                  <Button onClick={() => setShowVideos(true)} variant="secondary" className="text-xs">
-                    Open Video Uploader
-                  </Button>
-                </div>
-              )}
-            </Card>
+            {/* Celebrations: Lights, Goal Horns, Audio, Master Controls */}
+            {panel("celebrations", settings ? (
+              <>
+                <Automation settings={settings} saveNow={saveNow} />
+                <DevicesActions triggers={triggers} />
+                <AudioSettings
+                  leagues={leagueIds.length ? leagueIds : enabledLeagueIds}
+                  settings={settings}
+                  saveNow={saveNow}
+                  audio={status.data?.audio}
+                />
 
-            {/* Expandable Manual Test Triggers & Virtual Simulation */}
-            <Card
-              title="Testing & Simulation Toolbar"
-              subtitle="Manual trigger buttons to test lights, horn, and TTS, or run a virtual game simulation."
-              actions={
-                <Button onClick={() => setShowTesting(!showTesting)} className="text-xs">
-                  {showTesting ? "Collapse Toolbar" : "Open Test Toolbar"}
-                </Button>
-              }
-            >
-              {showTesting ? (
-                <div className="flex flex-col gap-5">
-                  <SimulationPanel onChange={setSim} />
-                  <ManualTriggers triggers={triggers} triggersErr={triggersErr} leagues={leagues} hasToken={hasToken} />
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-                  <span>Test hockey triggers (goals, power plays, empty-net goals, wins) and verify integration delivery.</span>
-                  <Button onClick={() => setShowTesting(true)} variant="secondary" className="text-xs">
-                    Open Toolbar
-                  </Button>
-                </div>
-              )}
-            </Card>
+                {/* Expandable Celebration Videos */}
+                <Card
+                  title="Celebration Videos"
+                  subtitle="Full-screen video overlays on TV scoreboards when a team or player scores."
+                  actions={
+                    <Button onClick={() => setShowVideos(!showVideos)} className="text-xs">
+                      {showVideos ? "Collapse Videos" : "Configure Videos"}
+                    </Button>
+                  }
+                >
+                  {showVideos ? (
+                    <CelebrationManager leagues={leagueIds.length ? leagueIds : enabledLeagueIds} games={liveGames} />
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                      <span>Optional: Upload MP4/WebM goal clips per team or player to take over the screen on goal.</span>
+                      <Button onClick={() => setShowVideos(true)} variant="secondary" className="text-xs">
+                        Open Video Uploader
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Expandable Manual Test Triggers & Virtual Simulation */}
+                <Card
+                  title="Testing & Simulation Toolbar"
+                  subtitle="Manual trigger buttons to test lights, horn, and TTS, or run a virtual game simulation."
+                  actions={
+                    <Button onClick={() => setShowTesting(!showTesting)} className="text-xs">
+                      {showTesting ? "Collapse Toolbar" : "Open Test Toolbar"}
+                    </Button>
+                  }
+                >
+                  {showTesting ? (
+                    <div className="flex flex-col gap-5">
+                      <SimulationPanel onChange={setSim} />
+                      <ManualTriggers triggers={triggers} triggersErr={triggersErr} leagues={leagues} hasToken={hasToken} />
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                      <span>Test hockey triggers (goals, power plays, empty-net goals, wins) and verify integration delivery.</span>
+                      <Button onClick={() => setShowTesting(true)} variant="secondary" className="text-xs">
+                        Open Toolbar
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              </>
+            ) : (
+              <p className="text-slate-400">Loading settings...</p>
+            ))}
+
+            {/* Displays: URL builder and the full screen catalogue */}
+            {panel("displays", <Displays base={settings?.public_base_url ?? ""} />)}
+
+            {/* Settings: HA Connection, My Teams, Security, Diagnostics */}
+            {panel("settings", (
+              <>
+                {settings && <HASettings settings={settings} saveNow={saveNow} />}
+                {settings && (
+                  <TeamsAndLeagues
+                    leagues={leagues}
+                    settings={settings}
+                    sync={sync}
+                    setSync={setSync}
+                    saveNow={saveNow}
+                  />
+                )}
+                <SecuritySettings onTokenChanged={setToken} />
+                <StatusPanel status={status} active={activeTab === "settings"} forceExpand={forceExpandStatus} />
+              </>
+            ))}
           </>
-        ) : (
-          <p className="text-slate-400">Loading settings...</p>
-        ))}
-
-        {/* Tab 3: Displays (TV Scoreboards, Kiosks & Links) */}
-        {panel("displays", <Displays base={settings?.public_base_url ?? ""} />)}
-
-        {/* Tab 4: Settings (HA Connection, My Teams, Security, Diagnostics) */}
-        {panel("settings", (
-          <>
-            {settings && <HASettings settings={settings} saveNow={saveNow} />}
-            {settings && (
-              <TeamsAndLeagues
-                leagues={leagues}
-                settings={settings}
-                sync={sync}
-                setSync={setSync}
-                saveNow={saveNow}
-              />
-            )}
-            <SecuritySettings onTokenChanged={setToken} />
-            <StatusPanel status={status} active={tab === "settings"} forceExpand={forceExpandStatus} />
-          </>
-        ))}
+        )}
       </main>
     </div>
   );

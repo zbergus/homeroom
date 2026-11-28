@@ -34,6 +34,10 @@ const json = (path: string, method: string, body?: unknown, headers: Record<stri
 
 
 describe("control plane", () => {
+  it("status reports whether mutating calls are gated by an admin token", async () => {
+    expect((await getJson<{ admin_required: boolean }>("/api/status")).admin_required).toBe(false);
+  });
+
   it("UI websocket snapshots and game updates include server clock reference timestamps", async () => {
     const before = Date.now();
     const game = gameOf({ status: "in", period: 2, clock_s: 754, clock_dir: "down" });
@@ -99,6 +103,7 @@ describe("control plane", () => {
     await app.close();
     process.env.ADMIN_TOKEN = "tok";
     await boot();
+    expect((await getJson<{ admin_required: boolean }>("/api/status")).admin_required).toBe(true);
     expect((await fetch(`${base}/api/hook/goal`)).status).toBe(401);
     expect((await fetch(`${base}/api/hook/goal?token=wrong`)).status).toBe(401);
     expect((await fetch(`${base}/api/hook/goal?token=tok`)).status).toBe(200);
@@ -111,6 +116,7 @@ describe("control plane", () => {
     await app.close();
     process.env.ADMIN_TOKEN = "tok";
     await boot();
+    expect((await getJson<{ admin_required: boolean }>("/api/status")).admin_required).toBe(true);
     for (const path of ["/api/settings", "/api/status", "/api/schedule", "/api/games/live", "/api/events/recent", "/healthz"]) {
       expect((await fetch(base + path)).status, `GET ${path}`).toBe(200);
     }
